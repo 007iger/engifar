@@ -130,6 +130,12 @@ class FakeRepository implements GameRepository {
   completeSessionAutomatically(_sessionId: string): Promise<GameSessionSummary | null> {
     return Promise.resolve({ ...session, status: "completed", finishedAt: NOW });
   }
+
+  allAnswered = false;
+
+  haveAllParticipantsAnswered(_sessionId: string, _questionIndex: number): Promise<boolean> {
+    return Promise.resolve(this.allAnswered);
+  }
 }
 
 function jsonRequest(path: string, method: string, body: unknown, token?: string): Request {
@@ -257,4 +263,19 @@ Deno.test("an answer is passed to the repository", async () => {
   assert.equal(response.status, 200);
   assert.equal(repository.submittedOption, 2);
   assert.equal((await response.json()).data.responseTimeMs, 500);
+});
+
+Deno.test("全員回答済みでも解答APIは正常にレスポンスを返す", async () => {
+  const repository = new FakeRepository();
+  repository.allAnswered = true;
+  const response = await createApp(repository)(
+    jsonRequest(
+      `/api/sessions/${SESSION_ID}/answers/0`,
+      "PUT",
+      { selectedOption: 1 },
+      TOKEN,
+    ),
+  );
+
+  assert.equal(response.status, 200);
 });

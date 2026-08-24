@@ -2,7 +2,7 @@ import { serveDir } from "@std/http/file-server";
 import { ApiError } from "./errors.ts";
 import type { GameGenre, GameRepository } from "./types.ts";
 import { broadcast, handleWsUpgrade } from "./ws.ts";
-import { scheduleQuestionAdvance } from "./questionLoop.ts";
+import { scheduleQuestionAdvance, triggerEarlyQuestionEnd } from "./questionLoop.ts";
 
 const MAX_JSON_BODY_BYTES = 16 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -265,6 +265,14 @@ async function handleApi(request: Request, repository: GameRepository): Promise<
       questionIndex(answerMatch[2]),
       selectedOptionFrom(body),
     );
+    // 全員がこの問題に回答し終えていたら、制限時間を待たずに答え合わせへ進める。
+    const allAnswered = await repository.haveAllParticipantsAnswered(
+      result.gameSessionId,
+      result.questionIndex,
+    );
+    if (allAnswered) {
+      triggerEarlyQuestionEnd(result.gameSessionId, result.questionIndex);
+    }
     return json({ data: result });
   }
 
