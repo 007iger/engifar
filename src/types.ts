@@ -93,4 +93,11 @@ export interface GameRepository {
 
   /** そのセッションにまだ残っている参加者全員が、指定した問題に回答済みかどうか。 */
   haveAllParticipantsAnswered(sessionId: string, questionIndex: number): Promise<boolean>;
+
+  /**
+   * WebSocketの切断(正常切断・ハートビート切れの両方)を検知した時に呼ぶ。
+   * participant.left_at / session_participant.left_at を更新する。
+   * すでに離脱済みだった場合はnullを返す(二重処理の防止)。
+   */
+  markParticipantDisconnected(participantId: string): Promise<{ roomId: string } | null>;
 }

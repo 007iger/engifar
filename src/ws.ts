@@ -17,6 +17,15 @@ export type WsEvent =
 // 使って同じ部屋を指すので、roomCode(見た目の部屋コード)ではなくroomIdで揃えている。
 const roomConnections = new Map<string, Set<WebSocket>>();
 
+interface ConnectionInfo {
+  roomId: string;
+  participantId: string;
+  lastSeenAt: number;
+}
+
+// ハートビート(離脱検知)用に、接続ごとの「最後に何か受信した時刻」を覚えておく。
+const connectionInfo = new Map<WebSocket, ConnectionInfo>();
+
 function roomSet(roomId: string): Set<WebSocket> {
   let set = roomConnections.get(roomId);
   if (!set) {
@@ -33,6 +42,24 @@ export function broadcast(roomId: string, event: WsEvent): void {
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(payload);
     }
+  }
+}
+
+/**
+ * 切断(正常なWebSocketクローズ、またはハートビート切れ)を処理する共通処理。
+ * DB上でも離脱済みにし、まだ離脱扱いになっていなければ player_left を配信する。
+ */
+async function handleDisconnect(
+  repository: GameRepository,
+  socket: WebSocket,
+  info: ConnectionInfo,
+): Promise<void> {
+  roomConnections.get(info.roomId)?.delete(socket);
+  connectionInfo.delete(socket);
+
+  const result = await repository.markParticipantDisconnected(info.participantId);
+  if (result) {
+    broadcast(info.roomId, { type: "player_left", participantId: info.participantId });
   }
 }
 
@@ -61,12 +88,62 @@ export async function handleWsUpgrade(
 
   socket.onopen = () => {
     connections.add(socket);
+    connectionInfo.set(socket, { roomId, participantId: participant.id, lastSeenAt: Date.now() });
+  };
+
+  // 何か受信すること自体を生存確認として扱う(専用のハートビートメッセージでなくてもよい)。
+  socket.onmessage = () => {
+    const info = connectionInfo.get(socket);
+    if (info) info.lastSeenAt = Date.now();
   };
 
   socket.onclose = () => {
-    connections.delete(socket);
-    broadcast(roomId, { type: "player_left", participantId: participant.id });
+    // ハートビート検知側が先に処理済み(connectionInfoから削除済み)なら、ここでは何もしない。
+    const info = connectionInfo.get(socket);
+    if (!info) return;
+    handleDisconnect(repository, socket, info);
   };
 
   return response;
+}
+
+// ---- ハートビート(離脱検知)の定期チェック ----
+// 10〜15秒程度の猶予、という方針の中間値として12秒を採用している。
+
+const DEFAULT_HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
+const DEFAULT_HEARTBEAT_TIMEOUT_MS = 12_000;
+
+let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+
+/**
+ * 一定時間(デフォルト12秒)何も受信していない接続を切断とみなすチェックを開始する。
+ * サーバー起動時に1回呼ぶ想定。intervalMs/timeoutMsはテストから短い値を渡せるようにしている。
+ */
+export function startHeartbeatMonitor(
+  repository: GameRepository,
+  intervalMs: number = DEFAULT_HEARTBEAT_CHECK_INTERVAL_MS,
+  timeoutMs: number = DEFAULT_HEARTBEAT_TIMEOUT_MS,
+): void {
+  stopHeartbeatMonitor();
+  heartbeatTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [socket, info] of connectionInfo) {
+      if (now - info.lastSeenAt > timeoutMs) {
+        handleDisconnect(repository, socket, info);
+        try {
+          socket.close();
+        } catch {
+          // すでに閉じかけている場合は無視してよい。
+        }
+      }
+    }
+  }, intervalMs);
+}
+
+/** テストやサーバー終了時にタイマーを止める。 */
+export function stopHeartbeatMonitor(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = undefined;
+  }
 }

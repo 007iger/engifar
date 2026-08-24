@@ -2,6 +2,7 @@ import { createApp } from "./app.ts";
 import { applyMigrations } from "./db/migrate.ts";
 import { createPool } from "./db/pool.ts";
 import { PostgresGameRepository } from "./db/postgres_game_repository.ts";
+import { startHeartbeatMonitor } from "./ws.ts";
 
 export async function startServer(): Promise<Deno.HttpServer> {
   const pool = createPool();
@@ -10,6 +11,7 @@ export async function startServer(): Promise<Deno.HttpServer> {
     console.log("Database migrations applied");
 
     const repository = new PostgresGameRepository(pool);
+    startHeartbeatMonitor(repository);
     return Deno.serve(createApp(repository));
   } catch (error) {
     await pool.end();

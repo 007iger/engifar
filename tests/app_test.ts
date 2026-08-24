@@ -136,6 +136,13 @@ class FakeRepository implements GameRepository {
   haveAllParticipantsAnswered(_sessionId: string, _questionIndex: number): Promise<boolean> {
     return Promise.resolve(this.allAnswered);
   }
+
+  disconnectedParticipantIds: string[] = [];
+
+  markParticipantDisconnected(participantId: string): Promise<{ roomId: string } | null> {
+    this.disconnectedParticipantIds.push(participantId);
+    return Promise.resolve({ roomId: membership.room.id });
+  }
 }
 
 function jsonRequest(path: string, method: string, body: unknown, token?: string): Request {
