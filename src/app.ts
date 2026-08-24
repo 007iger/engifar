@@ -2,6 +2,7 @@ import { serveDir } from "@std/http/file-server";
 import { ApiError } from "./errors.ts";
 import type { GameGenre, GameRepository } from "./types.ts";
 import { broadcast, handleWsUpgrade } from "./ws.ts";
+import { scheduleQuestionAdvance } from "./questionLoop.ts";
 
 const MAX_JSON_BODY_BYTES = 16 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -218,6 +219,16 @@ async function handleApi(request: Request, repository: GameRepository): Promise<
       bearerToken(request),
     );
     broadcast(result.roomId, { type: "host_started" });
+    // startSessionの時点で1問目(index 0)がすでに開始されているので、
+    // question_startedの配信とタイマー予約もここで行う。
+    if (result.currentQuestionIndex !== null) {
+      broadcast(result.roomId, {
+        type: "question_started",
+        questionIndex: result.currentQuestionIndex,
+        timeLimitSeconds: result.answerTimeSeconds,
+      });
+      scheduleQuestionAdvance(repository, result);
+    }
     return json({ data: result }, 201);
   }
 
@@ -241,6 +252,7 @@ async function handleApi(request: Request, repository: GameRepository): Promise<
       questionIndex: result.currentQuestionIndex ?? requestedIndex,
       timeLimitSeconds: result.answerTimeSeconds,
     });
+    scheduleQuestionAdvance(repository, result);
     return json({ data: result });
   }
 
