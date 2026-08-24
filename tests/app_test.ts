@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { createApp } from "../src/app.ts";
+import { ApiError } from "../src/errors.ts";
 import type {
   AnswerSummary,
   GameRepository,
   GameSessionSummary,
   MembershipResult,
+  ParticipantSummary,
   RoomDetail,
 } from "../src/types.ts";
 
@@ -63,6 +65,13 @@ class FakeRepository implements GameRepository {
 
   getRoom(_code: string): Promise<RoomDetail> {
     return Promise.resolve({ ...membership.room, participants: [membership.participant] });
+  }
+
+  authenticateParticipant(_roomCode: string, accessToken: string): Promise<ParticipantSummary> {
+    if (accessToken !== TOKEN) {
+      throw new ApiError(401, "AUTHENTICATION_FAILED", "Invalid room code or access token");
+    }
+    return Promise.resolve(membership.participant);
   }
 
   startSession(_code: string, _accessToken: string): Promise<GameSessionSummary> {
