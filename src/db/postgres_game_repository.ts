@@ -255,6 +255,24 @@ export class PostgresGameRepository implements GameRepository {
     return { ...mapRoom(room), participants: participants.rows.map(mapParticipant) };
   }
 
+  async authenticateParticipant(roomCode: string, accessToken: string): Promise<ParticipantSummary> {
+    const tokenHash = await hashAccessToken(accessToken);
+    const result = await this.pool.query<ParticipantRow>(
+      `SELECT p.id, p.display_name, p.role, p.joined_at
+       FROM participant p
+       JOIN room r ON r.id = p.room_id
+       WHERE r.code = $1
+         AND p.access_token_hash = $2
+         AND p.left_at IS NULL`,
+      [roomCode, tokenHash],
+    );
+    const participant = result.rows[0];
+    if (!participant) {
+      throw new ApiError(401, "AUTHENTICATION_FAILED", "Invalid room code or access token");
+    }
+    return mapParticipant(participant);
+  }
+
   async startSession(code: string, accessToken: string): Promise<GameSessionSummary> {
     const client = await this.pool.connect();
     const tokenHash = await hashAccessToken(accessToken);

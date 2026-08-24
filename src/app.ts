@@ -1,6 +1,7 @@
 import { serveDir } from "@std/http/file-server";
 import { ApiError } from "./errors.ts";
 import type { GameRepository } from "./types.ts";
+import { handleWsUpgrade } from "./ws.ts";
 
 const MAX_JSON_BODY_BYTES = 16 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -235,7 +236,21 @@ export function createApp(
   const staticRoot = options.staticRoot ?? "public";
 
   return async (request: Request): Promise<Response> => {
-    const { pathname } = new URL(request.url);
+    const url = new URL(request.url);
+    const { pathname } = url;
+
+    if (pathname === "/ws") {
+      try {
+        const upgraded = await handleWsUpgrade(request, url, repository);
+        if (upgraded) return upgraded;
+        return apiErrorResponse(
+          new ApiError(400, "WS_PARAMS_REQUIRED", "roomCode and token query params are required"),
+        );
+      } catch (error) {
+        if (error instanceof ApiError) return apiErrorResponse(error);
+        throw error;
+      }
+    }
 
     if (request.method === "OPTIONS" && pathname.startsWith("/api/")) {
       return new Response(null, {
