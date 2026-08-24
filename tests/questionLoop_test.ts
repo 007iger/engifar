@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { scheduleQuestionAdvance } from "../src/questionLoop.ts";
+import { scheduleQuestionAdvance, triggerEarlyQuestionEnd } from "../src/questionLoop.ts";
 import type { GameRepository, GameSessionSummary } from "../src/types.ts";
 
 const NOW = "2026-08-24T00:00:00.000Z";
@@ -63,4 +63,26 @@ Deno.test("最後の問題が終わったら自動でセッションを完了す
   assert.deepEqual((repository as unknown as RecordingRepository).completedSessionIds, [
     SESSION_ID,
   ]);
+});
+
+Deno.test("全員回答済みなら制限時間を待たずに次へ進む", async () => {
+  const repository = new RecordingRepository() as unknown as GameRepository;
+  // answerTimeSecondsを長くして、自然にタイムアウトしたのではないことを確認する。
+  scheduleQuestionAdvance(
+    repository,
+    makeSession({ currentQuestionIndex: 0, answerTimeSeconds: 10 }),
+    5,
+  );
+
+  const triggered = triggerEarlyQuestionEnd(SESSION_ID, 0);
+  assert.equal(triggered, true);
+
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  assert.deepEqual((repository as unknown as RecordingRepository).advancedFrom, [0]);
+});
+
+Deno.test("対象の問題がすでに終わっていれば早期終了は何もしない", () => {
+  const triggered = triggerEarlyQuestionEnd("no-such-session", 0);
+  assert.equal(triggered, false);
 });

@@ -612,6 +612,23 @@ export class PostgresGameRepository implements GameRepository {
     }
   }
 
+  async haveAllParticipantsAnswered(sessionId: string, questionIndex: number): Promise<boolean> {
+    const result = await this.pool.query<{ total: string; answered: string }>(
+      `SELECT
+         (SELECT count(*) FROM session_participant
+           WHERE game_session_id = $1 AND left_at IS NULL) AS total,
+         (SELECT count(*) FROM answer a
+           JOIN session_participant sp
+             ON sp.game_session_id = a.game_session_id AND sp.participant_id = a.participant_id
+           WHERE a.game_session_id = $1 AND a.question_index = $2 AND sp.left_at IS NULL) AS answered`,
+      [sessionId, questionIndex],
+    );
+    const row = result.rows[0];
+    const total = Number(row.total);
+    const answered = Number(row.answered);
+    return total > 0 && total === answered;
+  }
+
   private async authorizedHostSession(
     client: PoolClient,
     sessionId: string,
