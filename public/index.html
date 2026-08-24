@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+<<<<<<< Updated upstream
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="utf-8">
@@ -12,4 +13,45 @@
     <!-- サーバーから返ってきた文字を表示する場所 -->
     <h1 id="welcomeMessage"></h1>
   </body>
+=======
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>EngiFar | 遠距離を目指せ!!</title>
+  <link rel="stylesheet" href="./style.css?v=20260824-rank">
+  <script src="./script.js?v=20260824-rank" defer></script>
+</head>
+<body>
+  <div class="app-shell reference-home" id="app" data-page="home">
+    <div class="space-background" aria-hidden="true"></div>
+    <button class="guide-open-button guide-open-button--home" type="button" aria-haspopup="dialog"><span>?</span> 遊び方</button>
+    <main class="reference-home-main">
+      <header class="reference-hero"><p class="reference-logo">ENGIFAR</p><h1>プログラミングテストのスコアで<wbr>遠距離を目指せ！</h1></header>
+      <section class="reference-scene" aria-label="仲間のクルーとロケット">
+        <span class="scene-orbit scene-orbit--outer" aria-hidden="true"></span><span class="scene-orbit scene-orbit--inner" aria-hidden="true"></span>
+        <span class="crew-avatar scene-bot scene-bot--one" style="--crew-color:#54d37c" aria-label="緑のクルー"><i></i></span>
+        <span class="crew-avatar scene-bot scene-bot--two" style="--crew-color:#5ca9ff" aria-label="青のクルー"><i></i></span>
+        <div class="home-rocket" aria-label="EngiFarロケット"><span class="home-rocket-tip"></span><span class="home-rocket-window"></span><span class="home-rocket-band home-rocket-band--orange"></span><span class="home-rocket-band home-rocket-band--cyan"></span><span class="home-rocket-fin home-rocket-fin--left"></span><span class="home-rocket-fin home-rocket-fin--right"></span><span class="home-rocket-engine"></span><span class="home-rocket-flame"></span></div>
+        <span class="crew-avatar scene-bot scene-bot--three" style="--crew-color:#f5cf4b" aria-label="黄のクルー"><i></i></span>
+        <span class="crew-avatar scene-bot scene-bot--four" style="--crew-color:#ff665f" aria-label="赤のクルー"><i></i></span>
+      </section>
+      <section class="home-control" aria-labelledby="setup-title">
+        <div class="home-profile-row">
+          <span class="crew-avatar crew-avatar--medium" id="player-preview" style="--crew-color:#54d37c" aria-hidden="true"><i></i></span>
+          <label class="compact-name" for="player-name"><span id="setup-title">プレイヤー名</span><input id="player-name" type="text" maxlength="18" value="CREW MEMBER" autocomplete="name"></label>
+          <label class="native-color compact-color" for="player-color"><span>カラー</span><input id="player-color" type="color" value="#54d37c" aria-label="自由にクルーカラーを選ぶ"><output id="color-code" for="player-color">#54D37C</output></label>
+        </div>
+        <div class="compact-palette"><label class="hue-control" for="hue-slider"><span class="sr-only">色相を選ぶ</span><input id="hue-slider" type="range" min="0" max="359" value="145" aria-label="色相パレット"></label><div class="tone-palette" id="tone-palette" aria-label="明るさを選ぶ"></div></div>
+        <div class="home-actions">
+          <button class="primary-button" id="start-button" type="button"><span>ルームを作る</span><b aria-hidden="true">🚀</b></button>
+          <button class="secondary-button" id="join-room-button" type="button" aria-expanded="false" aria-controls="join-room-panel"><span>ルームに入る</span><b aria-hidden="true">→</b></button>
+        </div>
+        <div class="room-entry-panel" id="join-room-panel" hidden><label for="room-code">招待コード</label><div><input id="room-code" type="text" maxlength="8" placeholder="例：STAR24"><button id="enter-room-button" type="button">参加</button></div></div>
+        <p class="home-room-note">名前と自由なカラーを決めて、仲間が集まるルームへ。</p>
+      </section>
+    </main>
+  </div>
+</body>
+>>>>>>> Stashed changes
 </html>
