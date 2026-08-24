@@ -119,6 +119,17 @@ class FakeRepository implements GameRepository {
   completeSession(_sessionId: string, _accessToken: string): Promise<GameSessionSummary> {
     return Promise.resolve({ ...session, status: "completed", finishedAt: NOW });
   }
+
+  advanceQuestionAutomatically(
+    _sessionId: string,
+    fromIndex: number,
+  ): Promise<GameSessionSummary | null> {
+    return Promise.resolve({ ...session, currentQuestionIndex: fromIndex + 1 });
+  }
+
+  completeSessionAutomatically(_sessionId: string): Promise<GameSessionSummary | null> {
+    return Promise.resolve({ ...session, status: "completed", finishedAt: NOW });
+  }
 }
 
 function jsonRequest(path: string, method: string, body: unknown, token?: string): Request {

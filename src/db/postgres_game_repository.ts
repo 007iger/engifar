@@ -561,6 +561,57 @@ export class PostgresGameRepository implements GameRepository {
     }
   }
 
+  async advanceQuestionAutomatically(
+    sessionId: string,
+    fromIndex: number,
+  ): Promise<GameSessionSummary | null> {
+    const result = await this.pool.query<SessionRow>(
+      `UPDATE game_session
+       SET current_question_index = current_question_index + 1, question_started_at = now()
+       WHERE id = $1
+         AND status = 'active'
+         AND current_question_index = $2
+       RETURNING id, room_id, session_number, status, question_count,
+         answer_time_seconds, current_question_index, question_started_at,
+         started_at, finished_at`,
+      [sessionId, fromIndex],
+    );
+    const row = result.rows[0];
+    return row ? mapSession(row) : null;
+  }
+
+  async completeSessionAutomatically(sessionId: string): Promise<GameSessionSummary | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<SessionRow>(
+        `UPDATE game_session
+         SET status = 'completed', finished_at = now()
+         WHERE id = $1 AND status = 'active'
+         RETURNING id, room_id, session_number, status, question_count,
+           answer_time_seconds, current_question_index, question_started_at,
+           started_at, finished_at`,
+        [sessionId],
+      );
+      const row = result.rows[0];
+      if (!row) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      await client.query(
+        `UPDATE room SET status = 'results', updated_at = now() WHERE id = $1`,
+        [row.room_id],
+      );
+      await client.query("COMMIT");
+      return mapSession(row);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   private async authorizedHostSession(
     client: PoolClient,
     sessionId: string,

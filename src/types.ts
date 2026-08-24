@@ -78,4 +78,16 @@ export interface GameRepository {
     selectedOption: number,
   ): Promise<AnswerSummary>;
   completeSession(sessionId: string, accessToken: string): Promise<GameSessionSummary>;
+
+  /**
+   * サーバー主導の進行ループ専用(トークン不要)。ホストではなくサーバー自身が
+   * 制限時間経過を検知して次の問題に進めるために使う。
+   * fromIndexの時点からすでに状態が変わっていた場合(ホストが手動操作した等)はnullを返し、何もしない。
+   */
+  advanceQuestionAutomatically(
+    sessionId: string,
+    fromIndex: number,
+  ): Promise<GameSessionSummary | null>;
+  /** サーバー主導の進行ループ専用(トークン不要)。最後の問題が終わった時にセッションを完了させる。 */
+  completeSessionAutomatically(sessionId: string): Promise<GameSessionSummary | null>;
 }
