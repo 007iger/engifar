@@ -629,6 +629,36 @@ export class PostgresGameRepository implements GameRepository {
     return total > 0 && total === answered;
   }
 
+  async markParticipantDisconnected(participantId: string): Promise<{ roomId: string } | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<{ room_id: string }>(
+        `UPDATE participant
+         SET left_at = now()
+         WHERE id = $1 AND left_at IS NULL
+         RETURNING room_id`,
+        [participantId],
+      );
+      const row = result.rows[0];
+      if (!row) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      await client.query(
+        `UPDATE session_participant SET left_at = now() WHERE participant_id = $1 AND left_at IS NULL`,
+        [participantId],
+      );
+      await client.query("COMMIT");
+      return { roomId: row.room_id };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   private async authorizedHostSession(
     client: PoolClient,
     sessionId: string,
