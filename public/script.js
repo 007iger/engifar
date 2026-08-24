@@ -1,7 +1,3 @@
-<<<<<<< Updated upstream
-const message = await fetch("/welcome-message")
-document.querySelector("#welcomeMessage").innerText = await message.text()
-=======
 (() => {
   "use strict";
 
@@ -75,7 +71,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
   if (!app) return;
 
   const page = app.dataset.page || "home";
-  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reducedMotion = globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function clamp(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
@@ -176,7 +172,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
 
   function readHashState() {
     try {
-      const parameters = new URLSearchParams(window.location.hash.slice(1));
+      const parameters = new URLSearchParams(globalThis.location.hash.slice(1));
       const payload = parameters.get("mission");
       return payload ? normalizeState(JSON.parse(payload)) : null;
     } catch {
@@ -186,7 +182,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
 
   function readStoredState(key) {
     try {
-      const value = window.sessionStorage.getItem(key);
+      const value = globalThis.sessionStorage.getItem(key);
       return value ? normalizeState(JSON.parse(value)) : null;
     } catch {
       return null;
@@ -211,7 +207,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     state = normalizeState(nextState);
     state.updatedAt = nextState.updatedAt;
     try {
-      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      globalThis.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
       // URL hash remains available as a portable fallback.
     }
@@ -224,7 +220,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
 
   function goTo(path, nextState = state) {
     const saved = persist(nextState);
-    window.location.href = `${path}${stateHash(saved)}`;
+    globalThis.location.href = `${path}${stateHash(saved)}`;
   }
 
   function setStateLink(element, path, nextState = state) {
@@ -469,7 +465,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     function openGuide(trigger) {
       returnFocus = trigger || document.activeElement;
       document.body.classList.add("guide-open");
-      window.requestAnimationFrame(() => modal.focus());
+      globalThis.requestAnimationFrame(() => modal.focus());
     }
     function closeGuide() {
       document.body.classList.remove("guide-open");
@@ -484,12 +480,12 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     if (page === "home") {
       let alreadyShown = false;
       try {
-        alreadyShown = window.sessionStorage.getItem("engifar-guide-shown") === "1";
-        window.sessionStorage.setItem("engifar-guide-shown", "1");
+        alreadyShown = globalThis.sessionStorage.getItem("engifar-guide-shown") === "1";
+        globalThis.sessionStorage.setItem("engifar-guide-shown", "1");
       } catch {
         alreadyShown = false;
       }
-      if (!alreadyShown) window.setTimeout(() => openGuide(null), reducedMotion ? 0 : 350);
+      if (!alreadyShown) globalThis.setTimeout(() => openGuide(null), reducedMotion ? 0 : 350);
     }
   }
 
@@ -544,12 +540,12 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
         onComplete();
         return;
       }
-      requestId = window.requestAnimationFrame(frame);
+      requestId = globalThis.requestAnimationFrame(frame);
     }
 
     onTick(seconds, 1);
-    requestId = window.requestAnimationFrame(frame);
-    return () => window.cancelAnimationFrame(requestId);
+    requestId = globalThis.requestAnimationFrame(frame);
+    return () => globalThis.cancelAnimationFrame(requestId);
   }
 
   function initQuiz() {
@@ -608,7 +604,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
         }
       });
       document.body.append(effect);
-      window.setTimeout(() => effect.remove(), 1900);
+      globalThis.setTimeout(() => effect.remove(), 1900);
     }
 
     function finishQuiz() {
@@ -763,10 +759,6 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     };
   }
 
-  function delay(milliseconds) {
-    return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
-  }
-
   function initRocket() {
     if (!requireMetrics()) return;
     const elements = {
@@ -779,13 +771,13 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     };
     const outcome = calculateOutcome(state.metrics);
     const rank = getFlightRank(outcome.altitude);
-    const resultContent = window.ROCKET_LAUNCH_RESULTS || {};
+    const resultContent = globalThis.ROCKET_LAUNCH_RESULTS || {};
     const botColors = ["oklch(0.62 0.20 24)", "oklch(0.62 0.17 253)", "oklch(0.83 0.16 93)", state.player.color];
     const botSpots = [{ left: "28%", top: "78%" }, { left: "38%", top: "84%" }, { left: "60%", top: "84%" }, { left: "71%", top: "77%" }];
     const captions = { ground: "発射準備", sky: "上空へ", "atmosphere-edge": "大気圏付近", space: "宇宙空間", sea: "着水" };
     let running = false;
 
-    const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+    const wait = (milliseconds) => new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
     const showScreen = (target) => [elements.setup, elements.launch, elements.result].forEach((screen) => {
       const active = screen === target;
       screen.classList.toggle("is-active", active);
@@ -881,9 +873,9 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
       const progress = clamp((now - startedAt) / duration, 0, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
       element.textContent = Math.round(target * eased).toLocaleString("ja-JP");
-      if (progress < 1) window.requestAnimationFrame(frame);
+      if (progress < 1) globalThis.requestAnimationFrame(frame);
     }
-    window.requestAnimationFrame(frame);
+    globalThis.requestAnimationFrame(frame);
   }
 
   function addResultSparkles(container) {
@@ -1065,7 +1057,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     context.lineJoin = "round";
     [25, 50, 75, 100].forEach((level) => {
       context.beginPath();
-      entries.forEach((entry, index) => {
+      entries.forEach((_entry, index) => {
         const [x, y] = radarPoint(index, level, centerX, centerY, radius);
         if (index === 0) context.moveTo(x, y);
         else context.lineTo(x, y);
@@ -1075,7 +1067,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
       context.lineWidth = level === 100 ? 2 : 1;
       context.stroke();
     });
-    entries.forEach((entry, index) => {
+    entries.forEach((_entry, index) => {
       const [x, y] = radarPoint(index, 100, centerX, centerY, radius);
       context.beginPath();
       context.moveTo(centerX, centerY);
@@ -1262,7 +1254,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
         link.click();
         link.remove();
         saveLabel.textContent = "保存しました！";
-        window.setTimeout(() => {
+        globalThis.setTimeout(() => {
           saveButton.disabled = false;
           saveLabel.textContent = "PNGで保存";
           if (url.startsWith("blob:")) URL.revokeObjectURL(url);
@@ -1280,7 +1272,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     });
   }
 
-  window.EngiFar = Object.freeze({
+  globalThis.EngiFar = Object.freeze({
     questionCount: questionBank.length,
     thresholds: Object.freeze({ output: OUTPUT_THRESHOLD, safety: SAFETY_THRESHOLD }),
     calculateOutcome,
@@ -1297,4 +1289,3 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
   else if (page === "card") initCard();
   if (page === "home" || page === "room") initGuide();
 })();
->>>>>>> Stashed changes

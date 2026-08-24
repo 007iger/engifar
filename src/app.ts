@@ -9,6 +9,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 interface AppOptions {
   staticRoot?: string;
+  assetRoot?: string;
 }
 
 interface JsonRecord {
@@ -294,6 +295,7 @@ export function createApp(
   options: AppOptions = {},
 ): (request: Request) => Promise<Response> {
   const staticRoot = options.staticRoot ?? "public";
+  const assetRoot = options.assetRoot ?? "assets";
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -337,6 +339,15 @@ export function createApp(
 
     if (request.method === "GET" && pathname === "/welcome-message") {
       return new Response("jigインターンへようこそ！");
+    }
+
+    if (pathname.startsWith("/assets/")) {
+      return serveDir(request, {
+        fsRoot: assetRoot,
+        urlRoot: "assets",
+        showDirListing: false,
+        quiet: true,
+      });
     }
 
     return serveDir(request, {

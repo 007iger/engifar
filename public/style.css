@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-=======
 :root {
   color-scheme: dark;
   --night: #050a16;
@@ -24,24 +22,15 @@
   font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
   font-synthesis: none;
 }
-
->>>>>>> Stashed changes
 * {
   box-sizing: border-box;
   margin: 0;
-<<<<<<< Updated upstream
 }
 
-html, body {
-  height: 100vh;
-  width: 100%;
-}
-
+html,
 body {
-  display: grid;
-  place-content: center;
-}
-=======
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background: var(--night);
 }
@@ -3139,4 +3128,3 @@ body.guide-open .guide-modal {
   body.guide-open .guide-overlay,
   body.guide-open .guide-modal { animation:none; }
 }
->>>>>>> Stashed changes
