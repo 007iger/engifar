@@ -1,7 +1,7 @@
 import { serveDir } from "@std/http/file-server";
 import { ApiError } from "./errors.ts";
 import type { GameRepository } from "./types.ts";
-import { handleWsUpgrade } from "./ws.ts";
+import { broadcast, handleWsUpgrade } from "./ws.ts";
 
 const MAX_JSON_BODY_BYTES = 16 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -176,6 +176,12 @@ async function handleApi(request: Request, repository: GameRepository): Promise<
       roomCode(decodeURIComponent(roomParticipantsMatch[1])),
       displayNameFrom(body),
     );
+    broadcast(result.room.id, {
+      type: "player_joined",
+      participantId: result.participant.id,
+      displayName: result.participant.displayName,
+      role: result.participant.role,
+    });
     return json({ data: result }, 201);
   }
 
@@ -185,6 +191,7 @@ async function handleApi(request: Request, repository: GameRepository): Promise<
       roomCode(decodeURIComponent(roomSessionsMatch[1])),
       bearerToken(request),
     );
+    broadcast(result.roomId, { type: "host_started" });
     return json({ data: result }, 201);
   }
 
@@ -197,11 +204,17 @@ async function handleApi(request: Request, repository: GameRepository): Promise<
     /^\/api\/sessions\/([^/]+)\/questions\/([^/]+)\/start$/,
   );
   if (request.method === "POST" && startQuestionMatch) {
+    const requestedIndex = questionIndex(startQuestionMatch[2]);
     const result = await repository.startQuestion(
       sessionId(startQuestionMatch[1]),
       bearerToken(request),
-      questionIndex(startQuestionMatch[2]),
+      requestedIndex,
     );
+    broadcast(result.roomId, {
+      type: "question_started",
+      questionIndex: result.currentQuestionIndex ?? requestedIndex,
+      timeLimitSeconds: result.answerTimeSeconds,
+    });
     return json({ data: result });
   }
 
@@ -223,6 +236,7 @@ async function handleApi(request: Request, repository: GameRepository): Promise<
       sessionId(completeSessionMatch[1]),
       bearerToken(request),
     );
+    broadcast(result.roomId, { type: "all_questions_done" });
     return json({ data: result });
   }
 

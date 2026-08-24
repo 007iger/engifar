@@ -50,13 +50,18 @@ export interface AnswerSummary {
   answeredAt: string;
 }
 
+export interface AuthenticatedParticipant {
+  roomId: string;
+  participant: ParticipantSummary;
+}
+
 export interface GameRepository {
   healthCheck(): Promise<void>;
   createRoom(displayName: string): Promise<MembershipResult>;
   joinRoom(code: string, displayName: string): Promise<MembershipResult>;
   getRoom(code: string): Promise<RoomDetail>;
-  /** WebSocket接続時に (roomCode, accessToken) から参加者を特定するための認証。 */
-  authenticateParticipant(roomCode: string, accessToken: string): Promise<ParticipantSummary>;
+  /** WebSocket接続時に (roomCode, accessToken) から参加者と部屋(roomId)を特定するための認証。 */
+  authenticateParticipant(roomCode: string, accessToken: string): Promise<AuthenticatedParticipant>;
   startSession(code: string, accessToken: string): Promise<GameSessionSummary>;
   startQuestion(
     sessionId: string,
