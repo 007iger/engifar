@@ -1,0 +1,111 @@
+.rl-screen-result::before {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background: rgba(2, 5, 14, .18);
+  opacity: 0;
+}
+
+.rl-screen-result.is-active::before {
+  animation: rl-result-dark-impact 1.05s ease-out both;
+}
+
+.rl-screen-result .rl-result-content {
+  z-index: 2;
+}
+
+.rl-altitude-impact {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 7px;
+  min-height: 76px;
+  color: white;
+  text-align: center;
+  opacity: 0;
+  transform: scale(.18) translateY(16px);
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .72));
+}
+
+.rl-screen-result.is-active .rl-altitude-impact {
+  animation: rl-altitude-boom .78s cubic-bezier(.18, .88, .26, 1.22) .28s both;
+}
+
+.rl-altitude-impact::before {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 130px;
+  aspect-ratio: 1;
+  border: 3px solid rgba(255, 255, 255, .72);
+  border-radius: 50%;
+  content: "";
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.25);
+}
+
+.rl-screen-result.is-active .rl-altitude-impact::before {
+  animation: rl-altitude-shockwave .72s ease-out .42s both;
+}
+
+.rl-altitude-impact span {
+  align-self: center;
+  margin-right: 3px;
+  color: rgba(255, 255, 255, .78);
+  font-size: clamp(11px, 2.4vw, 15px);
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.rl-altitude-impact strong {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(44px, 11vw, 92px);
+  font-weight: 900;
+  line-height: .9;
+  letter-spacing: -.05em;
+  text-shadow: 0 0 24px rgba(255, 255, 255, .48);
+}
+
+.rl-altitude-impact b {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(18px, 4vw, 30px);
+}
+
+@keyframes rl-result-dark-impact {
+  0% { opacity: 0; }
+  24% { opacity: .78; }
+  100% { opacity: 1; }
+}
+
+@keyframes rl-altitude-boom {
+  0% { opacity: 0; transform: scale(.18) translateY(16px); }
+  62% { opacity: 1; transform: scale(1.14) translateY(0); }
+  82% { transform: scale(.96); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes rl-altitude-shockwave {
+  0% { opacity: .85; transform: translate(-50%, -50%) scale(.25); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(4.2); }
+}
+
+@media (max-height: 650px) {
+  .rl-altitude-impact { min-height: 54px; }
+  .rl-altitude-impact strong { font-size: clamp(38px, 9vw, 64px); }
+}
+
+@media (max-width: 480px) {
+  .rl-altitude-impact { flex-wrap: wrap; gap: 2px 6px; min-height: 88px; }
+  .rl-altitude-impact span { flex-basis: 100%; margin: 0; }
+  .rl-altitude-impact strong { font-size: clamp(34px, 11vw, 44px); }
+  .rl-altitude-impact b { font-size: 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rl-screen-result.is-active::before,
+  .rl-screen-result.is-active .rl-altitude-impact,
+  .rl-screen-result.is-active .rl-altitude-impact::before { animation-duration: .01ms; animation-delay: 0s; }
+}
