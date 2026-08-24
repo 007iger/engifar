@@ -4,10 +4,12 @@ import { ApiError } from "../src/errors.ts";
 import type {
   AnswerSummary,
   AuthenticatedParticipant,
+  GameGenre,
   GameRepository,
   GameSessionSummary,
   MembershipResult,
   RoomDetail,
+  RoomSummary,
 } from "../src/types.ts";
 
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
@@ -72,6 +74,16 @@ class FakeRepository implements GameRepository {
       throw new ApiError(401, "AUTHENTICATION_FAILED", "Invalid room code or access token");
     }
     return Promise.resolve({ roomId: membership.room.id, participant: membership.participant });
+  }
+
+  selectedGenre: GameGenre | null = null;
+
+  selectGenre(_code: string, accessToken: string, genre: GameGenre): Promise<RoomSummary> {
+    if (accessToken !== TOKEN) {
+      throw new ApiError(403, "HOST_REQUIRED", "A valid host token is required");
+    }
+    this.selectedGenre = genre;
+    return Promise.resolve({ ...membership.room, genre });
   }
 
   startSession(_code: string, _accessToken: string): Promise<GameSessionSummary> {
@@ -175,6 +187,26 @@ Deno.test("joining a room normalizes its code", async () => {
 
   assert.equal(response.status, 201);
   assert.equal(repository.joinedRoomCode, "ABC234");
+});
+
+Deno.test("host can select the room genre", async () => {
+  const repository = new FakeRepository();
+  const response = await createApp(repository)(
+    jsonRequest("/api/rooms/ABC234/genre", "PUT", { genre: "linebot" }, TOKEN),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(repository.selectedGenre, "linebot");
+  assert.equal((await response.json()).data.genre, "linebot");
+});
+
+Deno.test("selecting an unknown genre is rejected", async () => {
+  const response = await createApp(new FakeRepository())(
+    jsonRequest("/api/rooms/ABC234/genre", "PUT", { genre: "sports" }, TOKEN),
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, "INVALID_GENRE");
 });
 
 Deno.test("starting a session requires a bearer token", async () => {

@@ -3,6 +3,7 @@ import { ApiError } from "../errors.ts";
 import type {
   AnswerSummary,
   AuthenticatedParticipant,
+  GameGenre,
   GameRepository,
   GameSessionSummary,
   MembershipResult,
@@ -275,6 +276,40 @@ export class PostgresGameRepository implements GameRepository {
       throw new ApiError(401, "AUTHENTICATION_FAILED", "Invalid room code or access token");
     }
     return { roomId: row.room_id, participant: mapParticipant(row) };
+  }
+
+  async selectGenre(code: string, accessToken: string, genre: GameGenre): Promise<RoomSummary> {
+    const tokenHash = await hashAccessToken(accessToken);
+    const roomResult = await this.pool.query<RoomRow>(
+      `UPDATE room
+       SET genre = $3, updated_at = now()
+       WHERE code = $1
+         AND status = 'lobby'
+         AND EXISTS (
+           SELECT 1 FROM participant p
+           WHERE p.room_id = room.id
+             AND p.access_token_hash = $2
+             AND p.role = 'host'
+             AND p.left_at IS NULL
+         )
+       RETURNING id, code, status, genre, created_at`,
+      [code, tokenHash, genre],
+    );
+    const room = roomResult.rows[0];
+    if (!room) {
+      const existing = await this.pool.query<RoomRow>(
+        `SELECT id, code, status, genre, created_at FROM room WHERE code = $1`,
+        [code],
+      );
+      if (!existing.rows[0]) {
+        throw new ApiError(404, "ROOM_NOT_FOUND", "Room not found");
+      }
+      if (existing.rows[0].status !== "lobby") {
+        throw new ApiError(409, "ROOM_NOT_IN_LOBBY", "The genre can only be set before the game starts");
+      }
+      throw new ApiError(403, "HOST_REQUIRED", "A valid host token is required");
+    }
+    return mapRoom(room);
   }
 
   async startSession(code: string, accessToken: string): Promise<GameSessionSummary> {
