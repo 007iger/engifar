@@ -1,6 +1,6 @@
 import { serveDir } from "@std/http/file-server";
 import { ApiError } from "./errors.ts";
-import type { GameRepository } from "./types.ts";
+import type { GameGenre, GameRepository } from "./types.ts";
 import { broadcast, handleWsUpgrade } from "./ws.ts";
 
 const MAX_JSON_BODY_BYTES = 16 * 1024;
@@ -109,6 +109,20 @@ function selectedOptionFrom(body: JsonRecord): number {
   return option;
 }
 
+const GAME_GENRES: readonly GameGenre[] = ["web", "linebot", "modeling", "game"];
+
+function genreFrom(body: JsonRecord): GameGenre {
+  const genre = body.genre;
+  if (typeof genre !== "string" || !GAME_GENRES.includes(genre as GameGenre)) {
+    throw new ApiError(
+      400,
+      "INVALID_GENRE",
+      `genre must be one of: ${GAME_GENRES.join(", ")}`,
+    );
+  }
+  return genre as GameGenre;
+}
+
 function bearerToken(request: Request): string {
   const authorization = request.headers.get("authorization");
   const match = authorization?.match(/^Bearer ([A-Za-z0-9_-]{20,})$/);
@@ -183,6 +197,18 @@ async function handleApi(request: Request, repository: GameRepository): Promise<
       role: result.participant.role,
     });
     return json({ data: result }, 201);
+  }
+
+  const roomGenreMatch = pathname.match(/^\/api\/rooms\/([^/]+)\/genre$/);
+  if (request.method === "PUT" && roomGenreMatch) {
+    const body = await readJsonObject(request);
+    const result = await repository.selectGenre(
+      roomCode(decodeURIComponent(roomGenreMatch[1])),
+      bearerToken(request),
+      genreFrom(body),
+    );
+    broadcast(result.id, { type: "field_selected", genre: result.genre });
+    return json({ data: result });
   }
 
   const roomSessionsMatch = pathname.match(/^\/api\/rooms\/([^/]+)\/sessions$/);
