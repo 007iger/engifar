@@ -43,6 +43,12 @@ Deno.test("public files contain no unresolved merge conflicts", async () => {
   assert.doesNotMatch(html, /\bid="welcomeMessage"/);
 });
 
+Deno.test("public JavaScript does not bundle quiz questions or answers", async () => {
+  const source = await Deno.readTextFile("public/script.js");
+  assert.doesNotMatch(source, /rawQuestions|questionBank/);
+  assert.doesNotMatch(source, /<＿＿＿>EngiFar|h1は、ページの中心/);
+});
+
 Deno.test("all local HTML references are served successfully", async () => {
   const htmlFiles = (await walk("public")).filter((path) => path.endsWith(".html"));
 

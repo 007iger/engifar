@@ -1,12 +1,11 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "engifar-mission-v3";
-  const LEGACY_STORAGE_KEY = "engifar-mission-v2";
+  const STORAGE_KEY = "engifar-mission-v4";
+  const LEGACY_STORAGE_KEY = "engifar-mission-v3";
   const OUTPUT_THRESHOLD = 60;
   const SAFETY_THRESHOLD = 75;
-  const ANSWER_SECONDS = 10;
-  const REVIEW_SECONDS = 5;
+  let quizConfig = Object.freeze({ questionCount: 24, answerTimeSeconds: 10, reviewTimeSeconds: 5 });
   const FLIGHT_RANKS = Object.freeze([
     { key: "crash", min: 0, name: "不時着級", destination: "海（不時着）", color: "#62e4ec", legs: ["sky", "atmosphere-edge"], crashLanding: true },
     { key: "space_entry", min: 2800, name: "宇宙突入級", destination: "宇宙空間", color: "#8fe8ff", legs: ["sky", "atmosphere-edge", "space"] },
@@ -26,47 +25,6 @@
     "セキュリティ": { role: "TRUST ENGINEER", copy: "安心して使えるサービス体験を育てるクルー" }
   });
 
-  const rawQuestions = [
-    { category: "フロントエンド", weight: 1, instruction: "「EngiFar」をページで最も重要な見出しとして表示します。空欄に入るHTMLタグ名を選んでください。", question: "<＿＿＿>EngiFar</＿＿＿>", choices: ["h1", "p", "span", "div"], answer: 0, explanation: "h1は、ページの中心となる見出しを表すHTMLタグです。" },
-    { category: "フロントエンド", weight: 1, instruction: "「プロフィール」から /profile ページへ移動できるリンクを作ります。URLを指定する属性を選んでください。", question: '<a ＿＿＿="/profile">プロフィール</a>', choices: ["href", "src", "action", "to"], answer: 0, explanation: "aタグのhref属性に移動先のURLを指定します。" },
-    { category: "フロントエンド", weight: 1, instruction: "タイトルの文字色を緑色にします。CSSで文字色を指定するプロパティを選んでください。", question: ".title {\n  ＿＿＿: #c9f765;\n}", choices: ["color", "background-color", "font-color", "text-color"], answer: 0, explanation: "colorプロパティは文字の色を指定します。" },
-    { category: "フロントエンド", weight: 1.2, instruction: "ボタンをクリックしたときにstart関数が動くようにします。空欄に入るイベント名を選んでください。", question: 'button.addEventListener("＿＿＿", start);', choices: ["click", "press", "tap", "onClick"], answer: 0, explanation: "clickイベントは、ボタンなどがクリックされたときに発生します。" },
-
-    { category: "バックエンド", weight: 1, instruction: "DenoでWebサーバーを起動して「Hello」と返します。サーバーを開始するメソッド名を選んでください。", question: 'Deno.＿＿＿(() => new Response("Hello"));', choices: ["serve", "start", "listenWeb", "runServer"], answer: 0, explanation: "Deno.serve()を使うと、HTTPリクエストを受け取るサーバーを起動できます。" },
-    { category: "バックエンド", weight: 1, instruction: "非同期のfetchUser関数が完了するまで待ち、結果をuserへ入れます。空欄に入るキーワードを選んでください。", question: "const user = ＿＿＿ fetchUser();", choices: ["await", "wait", "async", "then"], answer: 0, explanation: "awaitはPromiseの完了を待って、その結果を受け取ります。" },
-    { category: "バックエンド", weight: 1.1, instruction: "JavaScriptのオブジェクトをAPIで送れるJSON文字列へ変換します。使うメソッド名を選んでください。", question: "const body = JSON.＿＿＿({ ok: true });", choices: ["stringify", "parse", "encode", "toJSON"], answer: 0, explanation: "JSON.stringify()は、オブジェクトをJSON形式の文字列へ変換します。" },
-    { category: "バックエンド", weight: 1.2, instruction: "config.txtの内容を文字列として読み込みます。Denoのファイル読み込みメソッドを選んでください。", question: 'const text = await Deno.＿＿＿("config.txt");', choices: ["readTextFile", "readFileText", "openText", "load"], answer: 0, explanation: "Deno.readTextFile()は、ファイルの内容を文字列として読み取ります。" },
-
-    { category: "データベース", weight: 1, instruction: "usersテーブルにあるすべての列を取得します。空欄に入るSQLの命令を選んでください。", question: "＿＿＿ * FROM users;", choices: ["SELECT", "GET", "READ", "FIND"], answer: 0, explanation: "SELECTは、データベースからデータを取得するSQLの命令です。" },
-    { category: "データベース", weight: 1, instruction: "usersテーブルからidが3の行だけを取得します。条件を指定するキーワードを選んでください。", question: "SELECT * FROM users\n＿＿＿ id = 3;", choices: ["WHERE", "WHEN", "IF", "FILTER"], answer: 0, explanation: "WHEREを使うと、取得する行の条件を指定できます。" },
-    { category: "データベース", weight: 1.1, instruction: "usersテーブルへ名前がAoiのデータを1件追加します。空欄に入るSQLの命令を選んでください。", question: '＿＿＿ INTO users (name)\nVALUES ("Aoi");', choices: ["INSERT", "ADD", "CREATE", "PUSH"], answer: 0, explanation: "INSERT INTOは、テーブルへ新しい行を追加するSQLの命令です。" },
-    { category: "データベース", weight: 1.2, instruction: "ordersテーブルをuser_idごとにまとめ、ユーザー別の注文数を数えます。空欄を選んでください。", question: "SELECT user_id, COUNT(*)\nFROM orders\n＿＿＿ user_id;", choices: ["GROUP BY", "ORDER BY", "COLLECT BY", "PARTITION WITH"], answer: 0, explanation: "GROUP BYは、同じuser_idの行をグループにまとめて集計します。" },
-
-    { category: "API", weight: 1, instruction: "APIからユーザー一覧を取得します。データ取得に使うHTTPメソッドを選んでください。", question: 'fetch("/api/users", {\n  method: "＿＿＿"\n});', choices: ["GET", "POST", "PUT", "DELETE"], answer: 0, explanation: "GETは、サーバーからデータを取得するときに使うHTTPメソッドです。" },
-    { category: "API", weight: 1, instruction: "APIへ新しいユーザー情報を送って登録します。新規作成に使うHTTPメソッドを選んでください。", question: 'fetch("/api/users", {\n  method: "＿＿＿",\n  body: JSON.stringify(user)\n});', choices: ["POST", "GET", "HEAD", "TRACE"], answer: 0, explanation: "POSTは、サーバーへデータを送り、新しいデータを作るときに使います。" },
-    { category: "API", weight: 1, instruction: "APIの処理が正常に完了したことを表す、基本的なHTTPステータスを選んでください。", question: "HTTP/1.1 ＿＿＿ OK", choices: ["200", "404", "500", "301"], answer: 0, explanation: "200 OKは、リクエストが正常に処理されたことを表します。" },
-    { category: "API", weight: 1.2, instruction: "fetchで受け取ったレスポンス本文をJSONとして読み取ります。空欄に入るメソッド名を選んでください。", question: 'const response = await fetch("/api/users");\nconst data = await response.＿＿＿();', choices: ["json", "parseJSON", "toObject", "bodyJSON"], answer: 0, explanation: "Responseのjson()は、レスポンス本文をJSONとして読み取ります。" },
-
-    { category: "インフラ", weight: 1, instruction: "Gitで現在の変更状況を確認します。空欄に入るコマンドを選んでください。", question: "git ＿＿＿", choices: ["status", "check", "state", "show-all"], answer: 0, explanation: "git statusは、変更されたファイルや現在のブランチ状態を表示します。" },
-    { category: "インフラ", weight: 1, instruction: "package.jsonに書かれた依存パッケージをインストールします。空欄に入るnpmコマンドを選んでください。", question: "npm ＿＿＿", choices: ["install", "download", "setup", "packages"], answer: 0, explanation: "npm installは、package.jsonを読み、必要なパッケージをインストールします。" },
-    { category: "インフラ", weight: 1.1, instruction: "package.jsonのscriptsに登録されたdevコマンドを実行します。空欄を選んでください。", question: "npm run ＿＿＿", choices: ["dev", "install", "package", "node"], answer: 0, explanation: "npm run devは、scriptsに登録されたdevコマンドを実行します。" },
-    { category: "インフラ", weight: 1.2, instruction: "Docker Composeのコンテナをバックグラウンドで起動します。空欄に入るオプションを選んでください。", question: "docker compose up ＿＿＿", choices: ["-d", "-b", "--hide", "--later"], answer: 0, explanation: "-dを付けると、コンテナをバックグラウンドで起動できます。" },
-
-    { category: "セキュリティ", weight: 1, instruction: "入力したパスワードの文字が画面上で隠れて表示される入力欄を作ります。typeの値を選んでください。", question: '<input type="＿＿＿" name="password">', choices: ["password", "secret", "hidden-text", "secure"], answer: 0, explanation: 'type="password"にすると、入力文字が伏せて表示されます。' },
-    { category: "セキュリティ", weight: 1, instruction: "ユーザー入力をHTMLとして解釈せず、文字列のまま画面へ表示します。使うプロパティを選んでください。", question: "message.＿＿＿ = userInput;", choices: ["textContent", "innerHTML", "outerHTML", "htmlValue"], answer: 0, explanation: "textContentは内容を文字列として扱い、安心できる画面表示につながります。" },
-    { category: "セキュリティ", weight: 1.1, instruction: "保存前のパスワードからbcryptのハッシュ値を作ります。空欄に入るメソッド名を選んでください。", question: "const hash = await bcrypt.＿＿＿(password, 10);", choices: ["hash", "encrypt", "protect", "secure"], answer: 0, explanation: "bcrypt.hash()は、パスワードから保存用のハッシュ値を生成します。" },
-    { category: "セキュリティ", weight: 1.2, instruction: "userIdをSQL文字列へ直接つなげず、パラメータとして渡します。空欄に入るプレースホルダーを選んでください。", question: 'const result = await db.query(\n  "SELECT * FROM users WHERE id = ＿＿＿",\n  [userId]\n);', choices: ["$1", "userId", "input", "raw"], answer: 0, explanation: "$1と値の配列を使うと、入力値をパラメータとして安全に渡せます。" }
-  ];
-
-  const questionBank = rawQuestions.map((item, index) => {
-    const shift = index % item.choices.length;
-    return {
-      ...item,
-      choices: item.choices.slice(shift).concat(item.choices.slice(0, shift)),
-      answer: (item.answer - shift + item.choices.length) % item.choices.length
-    };
-  });
-
   const app = document.querySelector("#app");
   if (!app) return;
 
@@ -82,9 +40,24 @@
     return Number.isFinite(number) ? number : fallback;
   }
 
+  async function requestApi(path, options = {}) {
+    const headers = new Headers(options.headers || {});
+    if (options.body !== undefined && !headers.has("content-type")) {
+      headers.set("content-type", "application/json");
+    }
+    const response = await fetch(path, { ...options, headers });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload && payload.error && payload.error.message
+        ? payload.error.message
+        : `API request failed (${response.status})`);
+    }
+    return payload.data;
+  }
+
   function createDefaultState() {
     return {
-      version: 3,
+      version: 4,
       missionId: String(Date.now()),
       updatedAt: Date.now(),
       status: "setup",
@@ -94,8 +67,9 @@
       room: { mode: "create", name: "ロケット部", code: "------" },
       quiz: {
         index: 0,
-        answers: Array(questionBank.length).fill(null),
-        records: Array(questionBank.length).fill(null)
+        answers: Array(quizConfig.questionCount).fill(null),
+        records: Array(quizConfig.questionCount).fill(null),
+        progressToken: null
       },
       metrics: null,
       outcome: null
@@ -114,10 +88,10 @@
     const playerSource = source.player && typeof source.player === "object" ? source.player : {};
     const quizSource = source.quiz && typeof source.quiz === "object" ? source.quiz : {};
     const roomSource = source.room && typeof source.room === "object" ? source.room : {};
-    const answers = Array.isArray(quizSource.answers) ? quizSource.answers.slice(0, questionBank.length) : [];
-    const records = Array.isArray(quizSource.records) ? quizSource.records.slice(0, questionBank.length) : [];
-    while (answers.length < questionBank.length) answers.push(null);
-    while (records.length < questionBank.length) records.push(null);
+    const answers = Array.isArray(quizSource.answers) ? quizSource.answers.slice(0, quizConfig.questionCount) : [];
+    const records = Array.isArray(quizSource.records) ? quizSource.records.slice(0, quizConfig.questionCount) : [];
+    while (answers.length < quizConfig.questionCount) answers.push(null);
+    while (records.length < quizConfig.questionCount) records.push(null);
 
     let metrics = null;
     if (source.metrics && Number.isFinite(Number(source.metrics.power)) && Number.isFinite(Number(source.metrics.safety))) {
@@ -148,7 +122,7 @@
 
     const name = String(playerSource.name || "CREW MEMBER").trim().slice(0, 18) || "CREW MEMBER";
     return {
-      version: 3,
+      version: 4,
       missionId: String(source.missionId || fallback.missionId),
       updatedAt: Math.max(0, safeNumber(source.updatedAt, 0)),
       status: String(source.status || (outcome ? "result" : metrics ? "rocket" : "setup")),
@@ -161,9 +135,10 @@
         code: String(roomSource.code || "------").trim().toUpperCase().slice(0, 8) || "------"
       },
       quiz: {
-        index: Math.round(clamp(safeNumber(quizSource.index, 0), 0, questionBank.length)),
+        index: Math.round(clamp(safeNumber(quizSource.index, 0), 0, quizConfig.questionCount)),
         answers,
-        records
+        records,
+        progressToken: typeof quizSource.progressToken === "string" ? quizSource.progressToken : null
       },
       metrics,
       outcome
@@ -496,31 +471,41 @@
   }
 
   function computeMetrics(records) {
-    const categories = [...new Set(questionBank.map((question) => question.category))];
+    const completedRecords = records.filter((record) =>
+      record && typeof record.category === "string" && Number.isFinite(Number(record.weight))
+    );
+    const categories = [...new Set(completedRecords.map((record) => record.category))];
     let correctWeight = 0;
     let totalWeight = 0;
     const categoryScores = {};
 
-    questionBank.forEach((question, index) => {
-      totalWeight += question.weight;
-      if (records[index] && records[index].correct) correctWeight += question.weight;
+    completedRecords.forEach((record) => {
+      const weight = Math.max(0, safeNumber(record.weight));
+      totalWeight += weight;
+      if (record.correct) correctWeight += weight;
     });
 
     categories.forEach((category) => {
       let categoryCorrect = 0;
       let categoryTotal = 0;
-      questionBank.forEach((question, index) => {
-        if (question.category !== category) return;
-        categoryTotal += question.weight;
-        if (records[index] && records[index].correct) categoryCorrect += question.weight;
+      completedRecords.forEach((record) => {
+        if (record.category !== category) return;
+        const weight = Math.max(0, safeNumber(record.weight));
+        categoryTotal += weight;
+        if (record.correct) categoryCorrect += weight;
       });
-      categoryScores[category] = Math.round((categoryCorrect / categoryTotal) * 100);
+      categoryScores[category] = categoryTotal
+        ? Math.round((categoryCorrect / categoryTotal) * 100)
+        : 0;
     });
 
-    const power = Math.round((correctWeight / totalWeight) * 100);
-    const safety = Math.round(
-      categories.reduce((sum, category) => sum + categoryScores[category], 0) / categories.length
-    );
+    const power = totalWeight ? Math.round((correctWeight / totalWeight) * 100) : 0;
+    const safety = categories.length
+      ? Math.round(
+        categories.reduce((sum, category) => sum + categoryScores[category], 0) /
+          categories.length
+      )
+      : 0;
     return { power, safety, categoryScores };
   }
 
@@ -548,7 +533,7 @@
     return () => globalThis.cancelAnimationFrame(requestId);
   }
 
-  function initQuiz() {
+  async function initQuiz() {
     if (!requirePlayer()) return;
 
     const elements = {
@@ -556,6 +541,7 @@
       avatar: document.querySelector("#quiz-player-avatar"),
       playerName: document.querySelector("#quiz-player-name"),
       current: document.querySelector("#question-current"),
+      total: document.querySelector("#question-total"),
       category: document.querySelector("#question-category"),
       difficulty: document.querySelector("#question-difficulty"),
       progress: document.querySelector("#quiz-progress"),
@@ -574,10 +560,47 @@
     elements.avatar.style.setProperty("--crew-color", state.player.color);
     elements.playerName.textContent = state.player.name;
 
-    let questionIndex = Math.min(state.quiz.index, questionBank.length - 1);
+    try {
+      quizConfig = Object.freeze(await requestApi("/api/quiz/config"));
+      state = normalizeState(state);
+      elements.total.textContent = String(quizConfig.questionCount);
+    } catch (error) {
+      elements.feedbackTitle.textContent = "問題を読み込めませんでした";
+      elements.feedbackText.textContent = error.message;
+      return;
+    }
+
+    if (state.quiz.index >= quizConfig.questionCount) {
+      if (!state.metrics) {
+        state.metrics = computeMetrics(state.quiz.records);
+        persist(state);
+      }
+      goTo("./rocket.html", state);
+      return;
+    }
+
+    if (!state.quiz.progressToken) {
+      try {
+        const attempt = await requestApi("/api/quiz/attempts", { method: "POST" });
+        state.quiz.index = 0;
+        state.quiz.answers = Array(quizConfig.questionCount).fill(null);
+        state.quiz.records = Array(quizConfig.questionCount).fill(null);
+        state.quiz.progressToken = attempt.progressToken;
+        state.metrics = null;
+        state.outcome = null;
+        persist(state);
+      } catch (error) {
+        elements.feedbackTitle.textContent = "クイズを開始できませんでした";
+        elements.feedbackText.textContent = error.message;
+        return;
+      }
+    }
+
+    let questionIndex = Math.min(state.quiz.index, quizConfig.questionCount - 1);
     let selectedChoice = Number.isInteger(state.quiz.answers[questionIndex])
       ? state.quiz.answers[questionIndex]
       : null;
+    let questionToken = null;
     let cancelClock = () => {};
     let phaseToken = 0;
 
@@ -609,45 +632,66 @@
 
     function finishQuiz() {
       cancelClock();
-      state.quiz.index = questionBank.length;
+      state.quiz.index = quizConfig.questionCount;
       state.metrics = computeMetrics(state.quiz.records);
       state.outcome = null;
       state.status = "rocket";
       goTo("./rocket.html", state);
     }
 
-    function showReview(question, token) {
+    async function showReview(token) {
       if (token !== phaseToken) return;
       elements.card.dataset.mode = "review";
       elements.timerLabel.textContent = "確認";
       elements.reviewCount.hidden = false;
 
-      const isCorrect = selectedChoice === question.answer;
+      [...elements.answers.children].forEach((button) => {
+        button.disabled = true;
+      });
+
+      let result;
+      try {
+        result = await requestApi(`/api/quiz/questions/${questionIndex}/grade`, {
+          method: "POST",
+          body: JSON.stringify({ questionToken, selectedOption: selectedChoice })
+        });
+      } catch (error) {
+        if (token !== phaseToken) return;
+        elements.feedbackIcon.textContent = "!";
+        elements.feedbackTitle.textContent = "答え合わせに失敗しました";
+        elements.feedbackText.textContent = error.message;
+        return;
+      }
+      if (token !== phaseToken) return;
+
+      const isCorrect = result.correct;
       if (isCorrect) launchCorrectConfetti();
       state.quiz.answers[questionIndex] = selectedChoice;
       state.quiz.records[questionIndex] = {
         selected: selectedChoice,
         correct: isCorrect,
-        category: question.category,
-        weight: question.weight
+        category: result.category,
+        weight: result.weight
       };
+      state.quiz.index = questionIndex + 1;
+      state.quiz.progressToken = result.nextProgressToken;
       persist(state);
 
       [...elements.answers.children].forEach((button, index) => {
         button.disabled = true;
-        button.classList.toggle("is-answer", index === question.answer);
-        button.classList.toggle("is-selected", index === selectedChoice && index !== question.answer);
-        button.classList.toggle("is-muted", index !== question.answer && index !== selectedChoice);
+        button.classList.toggle("is-answer", index === result.correctOption);
+        button.classList.toggle("is-selected", index === selectedChoice && index !== result.correctOption);
+        button.classList.toggle("is-muted", index !== result.correctOption && index !== selectedChoice);
       });
 
       elements.feedbackIcon.textContent = isCorrect ? "✓" : "✦";
       elements.feedbackTitle.textContent = isCorrect ? "ナイスチャージ！" : "正解を確認！";
       elements.feedbackText.textContent = selectedChoice === null
-        ? `今回は自動で答えを確認しました。${question.explanation}`
-        : `${question.explanation} 次の推進力にしよう。`;
+        ? `今回は自動で答えを確認しました。${result.explanation}`
+        : `${result.explanation} 次の推進力にしよう。`;
 
       cancelClock = runClock(
-        REVIEW_SECONDS,
+        quizConfig.reviewTimeSeconds,
         (shown, ratio) => {
           elements.timerValue.textContent = String(shown);
           elements.reviewCount.textContent = String(shown);
@@ -655,40 +699,59 @@
         },
         () => {
           if (token !== phaseToken) return;
-          if (questionIndex >= questionBank.length - 1) {
+          if (state.quiz.index >= quizConfig.questionCount) {
             finishQuiz();
             return;
           }
-          questionIndex += 1;
-          state.quiz.index = questionIndex;
+          questionIndex = state.quiz.index;
           selectedChoice = Number.isInteger(state.quiz.answers[questionIndex])
             ? state.quiz.answers[questionIndex]
             : null;
-          persist(state);
-          renderQuestion();
+          void renderQuestion();
         }
       );
     }
 
-    function renderQuestion() {
+    async function renderQuestion() {
       document.querySelectorAll(".correct-confetti").forEach((effect) => effect.remove());
       phaseToken += 1;
       const token = phaseToken;
       cancelClock();
 
-      const question = questionBank[questionIndex];
       elements.card.dataset.mode = "answer";
+      elements.feedbackIcon.textContent = "✦";
+      elements.feedbackTitle.textContent = "問題を読み込んでいます";
+      elements.feedbackText.textContent = "少し待ってください。";
+      elements.answers.replaceChildren();
+
+      let start;
+      try {
+        start = await requestApi(`/api/quiz/questions/${questionIndex}/start`, {
+          method: "POST",
+          body: JSON.stringify({ progressToken: state.quiz.progressToken })
+        });
+      } catch (error) {
+        if (token !== phaseToken) return;
+        elements.feedbackIcon.textContent = "!";
+        elements.feedbackTitle.textContent = "問題を読み込めませんでした";
+        elements.feedbackText.textContent = error.message;
+        return;
+      }
+      if (token !== phaseToken) return;
+
+      const question = start.question;
+      questionToken = start.questionToken;
       elements.current.textContent = String(questionIndex + 1).padStart(2, "0");
       elements.category.textContent = question.category;
       elements.difficulty.textContent = difficultyLabel(question.weight);
-      elements.progress.style.width = `${((questionIndex + 1) / questionBank.length) * 100}%`;
+      elements.progress.style.width = `${((questionIndex + 1) / quizConfig.questionCount) * 100}%`;
       elements.timerLabel.textContent = "回答";
-      elements.timerValue.textContent = String(ANSWER_SECONDS);
+      elements.timerValue.textContent = String(start.answerTimeSeconds);
       elements.timer.style.setProperty("--timer-progress", "1");
       elements.instruction.textContent = question.instruction;
       elements.question.textContent = question.question;
       elements.feedbackIcon.textContent = "✦";
-      elements.feedbackTitle.textContent = "10秒間は何度でも回答を変更できます";
+      elements.feedbackTitle.textContent = `${start.answerTimeSeconds}秒間は何度でも回答を変更できます`;
       elements.feedbackText.textContent = "選んだ答えはオレンジ色で表示されます。";
       elements.reviewCount.hidden = true;
       elements.answers.replaceChildren();
@@ -716,16 +779,16 @@
       });
 
       cancelClock = runClock(
-        ANSWER_SECONDS,
+        start.answerTimeSeconds,
         (shown, ratio) => {
           elements.timerValue.textContent = String(shown);
           elements.timer.style.setProperty("--timer-progress", String(ratio));
         },
-        () => showReview(question, token)
+        () => void showReview(token)
       );
     }
 
-    renderQuestion();
+    void renderQuestion();
   }
 
   function getFlightRank(altitude) {
@@ -1273,7 +1336,7 @@
   }
 
   globalThis.EngiFar = Object.freeze({
-    questionCount: questionBank.length,
+    get questionCount() { return quizConfig.questionCount; },
     thresholds: Object.freeze({ output: OUTPUT_THRESHOLD, safety: SAFETY_THRESHOLD }),
     calculateOutcome,
     computeMetrics,
@@ -1283,7 +1346,7 @@
 
   if (page === "home") initHome();
   else if (page === "room") initRoom();
-  else if (page === "quiz") initQuiz();
+  else if (page === "quiz") void initQuiz();
   else if (page === "rocket") initRocket();
   else if (page === "result") initResult();
   else if (page === "card") initCard();

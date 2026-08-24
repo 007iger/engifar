@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createApp } from "../src/app.ts";
 import { ApiError } from "../src/errors.ts";
+import { createQuizService } from "../src/quiz.ts";
 import type {
   AnswerSummary,
   AuthenticatedParticipant,
@@ -288,4 +289,53 @@ Deno.test("全員回答済みでも解答APIは正常にレスポンスを返す
   );
 
   assert.equal(response.status, 200);
+});
+
+Deno.test("quiz API keeps the answer out of question responses", async () => {
+  let now = 1_000;
+  const quizService = createQuizService({
+    secret: "app-test-secret-that-is-at-least-32-bytes",
+    now: () => now,
+  });
+  const app = createApp(new FakeRepository(), { quizService });
+
+  const configResponse = await app(new Request("http://localhost/api/quiz/config"));
+  assert.equal(configResponse.status, 200);
+  assert.equal((await configResponse.json()).data.questionCount, 24);
+
+  const attemptResponse = await app(
+    new Request("http://localhost/api/quiz/attempts", { method: "POST" }),
+  );
+  assert.equal(attemptResponse.status, 201);
+  const { progressToken } = (await attemptResponse.json()).data;
+
+  const startResponse = await app(
+    jsonRequest("/api/quiz/questions/0/start", "POST", { progressToken }),
+  );
+  assert.equal(startResponse.status, 200);
+  const start = (await startResponse.json()).data;
+  assert.equal(Object.hasOwn(start.question, "answer"), false);
+  assert.equal(Object.hasOwn(start.question, "explanation"), false);
+
+  const earlyGrade = await app(
+    jsonRequest("/api/quiz/questions/0/grade", "POST", {
+      questionToken: start.questionToken,
+      selectedOption: 0,
+    }),
+  );
+  assert.equal(earlyGrade.status, 409);
+  assert.equal((await earlyGrade.json()).error.code, "QUIZ_REVIEW_NOT_READY");
+
+  now += 10_000;
+  const gradeResponse = await app(
+    jsonRequest("/api/quiz/questions/0/grade", "POST", {
+      questionToken: start.questionToken,
+      selectedOption: 0,
+    }),
+  );
+  assert.equal(gradeResponse.status, 200);
+  const grade = (await gradeResponse.json()).data;
+  assert.equal(grade.correct, true);
+  assert.equal(grade.correctOption, 0);
+  assert.equal(typeof grade.explanation, "string");
 });

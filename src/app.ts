@@ -3,6 +3,7 @@ import { ApiError } from "./errors.ts";
 import type { GameGenre, GameRepository } from "./types.ts";
 import { broadcast, handleWsUpgrade } from "./ws.ts";
 import { scheduleQuestionAdvance, triggerEarlyQuestionEnd } from "./questionLoop.ts";
+import { createQuizService, type QuizService } from "./quiz.ts";
 
 const MAX_JSON_BODY_BYTES = 16 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -10,6 +11,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 interface AppOptions {
   staticRoot?: string;
   assetRoot?: string;
+  quizService?: QuizService;
 }
 
 interface JsonRecord {
@@ -111,6 +113,19 @@ function selectedOptionFrom(body: JsonRecord): number {
   return option;
 }
 
+function quizTokenFrom(body: JsonRecord, key: "progressToken" | "questionToken"): string {
+  const token = body[key];
+  if (typeof token !== "string" || token.length < 20 || token.length > 4096) {
+    throw new ApiError(400, "INVALID_QUIZ_TOKEN", `${key} is required`);
+  }
+  return token;
+}
+
+function quizSelectedOptionFrom(body: JsonRecord): number | null {
+  if (body.selectedOption === null) return null;
+  return selectedOptionFrom(body);
+}
+
 const GAME_GENRES: readonly GameGenre[] = ["web", "linebot", "modeling", "game"];
 
 function genreFrom(body: JsonRecord): GameGenre {
@@ -164,7 +179,11 @@ function questionIndex(rawIndex: string): number {
   return index;
 }
 
-async function handleApi(request: Request, repository: GameRepository): Promise<Response> {
+async function handleApi(
+  request: Request,
+  repository: GameRepository,
+  quizService: QuizService,
+): Promise<Response> {
   const { pathname } = new URL(request.url);
 
   if (request.method === "GET" && pathname === "/api/health") {
@@ -178,6 +197,37 @@ async function handleApi(request: Request, repository: GameRepository): Promise<
         503,
       );
     }
+  }
+
+  if (request.method === "GET" && pathname === "/api/quiz/config") {
+    return json({ data: quizService.config });
+  }
+
+  if (request.method === "POST" && pathname === "/api/quiz/attempts") {
+    return json({ data: await quizService.createAttempt() }, 201);
+  }
+
+  const quizStartMatch = pathname.match(/^\/api\/quiz\/questions\/([^/]+)\/start$/);
+  if (request.method === "POST" && quizStartMatch) {
+    const body = await readJsonObject(request);
+    return json({
+      data: await quizService.startQuestion(
+        questionIndex(quizStartMatch[1]),
+        quizTokenFrom(body, "progressToken"),
+      ),
+    });
+  }
+
+  const quizGradeMatch = pathname.match(/^\/api\/quiz\/questions\/([^/]+)\/grade$/);
+  if (request.method === "POST" && quizGradeMatch) {
+    const body = await readJsonObject(request);
+    return json({
+      data: await quizService.gradeQuestion(
+        questionIndex(quizGradeMatch[1]),
+        quizTokenFrom(body, "questionToken"),
+        quizSelectedOptionFrom(body),
+      ),
+    });
   }
 
   if (request.method === "POST" && pathname === "/api/rooms") {
@@ -296,6 +346,7 @@ export function createApp(
 ): (request: Request) => Promise<Response> {
   const staticRoot = options.staticRoot ?? "public";
   const assetRoot = options.assetRoot ?? "assets";
+  const quizService = options.quizService ?? createQuizService();
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -323,7 +374,7 @@ export function createApp(
 
     if (pathname.startsWith("/api/")) {
       try {
-        return await handleApi(request, repository);
+        return await handleApi(request, repository, quizService);
       } catch (error) {
         if (error instanceof ApiError) return apiErrorResponse(error);
         if (error instanceof URIError) {

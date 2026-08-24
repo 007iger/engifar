@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#07111f">
   <title>EngiFar | Web基礎クイズ</title>
   <link rel="stylesheet" href="./style.css?v=20260824-rank">
-  <script src="./script.js?v=20260824-rank" defer></script>
+  <script src="./script.js?v=20260824-quiz-api" defer></script>
 </head>
 <body>
   <div class="app-shell" id="app" data-page="quiz">
@@ -28,7 +28,7 @@
         <header class="quiz-head">
           <div>
             <p class="eyebrow">KNOWLEDGE CHARGE</p>
-            <div class="question-count"><strong id="question-current">01</strong><span>/ 24</span></div>
+            <div class="question-count"><strong id="question-current">01</strong><span>/ <span id="question-total">24</span></span></div>
           </div>
           <div class="quiz-head-side">
             <span class="category-chip" id="question-category">フロントエンド</span>
