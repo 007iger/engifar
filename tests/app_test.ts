@@ -3,10 +3,10 @@ import { createApp } from "../src/app.ts";
 import { ApiError } from "../src/errors.ts";
 import type {
   AnswerSummary,
+  AuthenticatedParticipant,
   GameRepository,
   GameSessionSummary,
   MembershipResult,
-  ParticipantSummary,
   RoomDetail,
 } from "../src/types.ts";
 
@@ -67,11 +67,11 @@ class FakeRepository implements GameRepository {
     return Promise.resolve({ ...membership.room, participants: [membership.participant] });
   }
 
-  authenticateParticipant(_roomCode: string, accessToken: string): Promise<ParticipantSummary> {
+  authenticateParticipant(_roomCode: string, accessToken: string): Promise<AuthenticatedParticipant> {
     if (accessToken !== TOKEN) {
       throw new ApiError(401, "AUTHENTICATION_FAILED", "Invalid room code or access token");
     }
-    return Promise.resolve(membership.participant);
+    return Promise.resolve({ roomId: membership.room.id, participant: membership.participant });
   }
 
   startSession(_code: string, _accessToken: string): Promise<GameSessionSummary> {

@@ -13,21 +13,23 @@ export type WsEvent =
   | { type: "all_questions_done" }
   | { type: "launch_ready"; categoryScores: Record<string, number> };
 
+// 接続はroomId(内部ID)で管理する。REST API側(app.ts)もGameSessionSummary.roomIdなどを
+// 使って同じ部屋を指すので、roomCode(見た目の部屋コード)ではなくroomIdで揃えている。
 const roomConnections = new Map<string, Set<WebSocket>>();
 
-function roomSet(roomCode: string): Set<WebSocket> {
-  let set = roomConnections.get(roomCode);
+function roomSet(roomId: string): Set<WebSocket> {
+  let set = roomConnections.get(roomId);
   if (!set) {
     set = new Set();
-    roomConnections.set(roomCode, set);
+    roomConnections.set(roomId, set);
   }
   return set;
 }
 
-/** 指定した部屋につながっている全員にイベントを配信する。Step4以降、REST側のアクションから呼び出す想定。 */
-export function broadcast(roomCode: string, event: WsEvent): void {
+/** 指定した部屋(roomId)につながっている全員にイベントを配信する。REST側のアクションから呼び出される。 */
+export function broadcast(roomId: string, event: WsEvent): void {
   const payload = JSON.stringify(event);
-  for (const socket of roomSet(roomCode)) {
+  for (const socket of roomSet(roomId)) {
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(payload);
     }
@@ -50,24 +52,20 @@ export async function handleWsUpgrade(
   }
 
   // 参加者として正しいか(部屋コード+トークンの組み合わせ)を先に確認してからアップグレードする。
-  const participant = await repository.authenticateParticipant(roomCode, token);
+  // player_joined自体はREST側のjoinRoom/createRoomが正式なタイミングで配信するので、
+  // ここでは単に接続を部屋(roomId)に登録するだけにする。
+  const { roomId, participant } = await repository.authenticateParticipant(roomCode, token);
 
   const { socket, response } = Deno.upgradeWebSocket(req);
-  const connections = roomSet(roomCode);
+  const connections = roomSet(roomId);
 
   socket.onopen = () => {
     connections.add(socket);
-    broadcast(roomCode, {
-      type: "player_joined",
-      participantId: participant.id,
-      displayName: participant.displayName,
-      role: participant.role,
-    });
   };
 
   socket.onclose = () => {
     connections.delete(socket);
-    broadcast(roomCode, { type: "player_left", participantId: participant.id });
+    broadcast(roomId, { type: "player_left", participantId: participant.id });
   };
 
   return response;

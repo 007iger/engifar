@@ -2,6 +2,7 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { ApiError } from "../errors.ts";
 import type {
   AnswerSummary,
+  AuthenticatedParticipant,
   GameRepository,
   GameSessionSummary,
   MembershipResult,
@@ -255,10 +256,13 @@ export class PostgresGameRepository implements GameRepository {
     return { ...mapRoom(room), participants: participants.rows.map(mapParticipant) };
   }
 
-  async authenticateParticipant(roomCode: string, accessToken: string): Promise<ParticipantSummary> {
+  async authenticateParticipant(
+    roomCode: string,
+    accessToken: string,
+  ): Promise<AuthenticatedParticipant> {
     const tokenHash = await hashAccessToken(accessToken);
-    const result = await this.pool.query<ParticipantRow>(
-      `SELECT p.id, p.display_name, p.role, p.joined_at
+    const result = await this.pool.query<ParticipantRow & { room_id: string }>(
+      `SELECT p.id, p.display_name, p.role, p.joined_at, p.room_id
        FROM participant p
        JOIN room r ON r.id = p.room_id
        WHERE r.code = $1
@@ -266,11 +270,11 @@ export class PostgresGameRepository implements GameRepository {
          AND p.left_at IS NULL`,
       [roomCode, tokenHash],
     );
-    const participant = result.rows[0];
-    if (!participant) {
+    const row = result.rows[0];
+    if (!row) {
       throw new ApiError(401, "AUTHENTICATION_FAILED", "Invalid room code or access token");
     }
-    return mapParticipant(participant);
+    return { roomId: row.room_id, participant: mapParticipant(row) };
   }
 
   async startSession(code: string, accessToken: string): Promise<GameSessionSummary> {
