@@ -369,6 +369,10 @@
     const hueSlider = document.querySelector("#hue-slider");
     const palette = document.querySelector("#tone-palette");
     const colorCode = document.querySelector("#color-code");
+    const colorSwatch = document.querySelector("#selected-color-swatch");
+    const colorOptionsToggle = document.querySelector("#color-options-toggle");
+    const colorOptionsPanel = document.querySelector("#color-options-panel");
+    const randomColorButton = document.querySelector("#random-color-button");
     const preview = document.querySelector("#player-preview");
     const joinToggle = document.querySelector("#join-room-button");
     const joinPanel = document.querySelector("#join-room-panel");
@@ -377,8 +381,9 @@
     const roomCode = document.querySelector("#room-code");
     const roomStatus = document.querySelector("#home-room-status");
     if (
-      !nameInput || !colorInput || !hueSlider || !palette || !joinToggle || !joinPanel ||
-      !createButton || !joinButton || !roomCode || !roomStatus
+      !nameInput || !colorInput || !hueSlider || !palette || !colorSwatch ||
+      !colorOptionsToggle || !colorOptionsPanel || !randomColorButton || !joinToggle ||
+      !joinPanel || !createButton || !joinButton || !roomCode || !roomStatus
     ) return;
 
     nameInput.value = state.player.name;
@@ -398,6 +403,7 @@
       const color = normalizeColor(value);
       colorInput.value = color;
       colorCode.value = color.toUpperCase();
+      colorSwatch.style.setProperty("--swatch-color", color);
       preview.style.setProperty("--crew-color", color);
       if (syncHue) hueSlider.value = String(rgbToHsl(hexToRgb(color)).h);
       document.documentElement.style.setProperty("--selected-hue", hueSlider.value);
@@ -435,6 +441,16 @@
     });
 
     hueSlider.addEventListener("input", () => renderPalette(true));
+    colorOptionsToggle.addEventListener("click", () => {
+      const expanded = colorOptionsPanel.hidden;
+      colorOptionsPanel.hidden = !expanded;
+      colorOptionsToggle.setAttribute("aria-expanded", String(expanded));
+      colorOptionsToggle.textContent = expanded ? "色設定を閉じる" : "色を変更";
+    });
+    randomColorButton.addEventListener("click", () => {
+      hueSlider.value = String(Math.floor(Math.random() * 360));
+      renderPalette(true);
+    });
 
     async function enterRoom(mode) {
       if (createButton.disabled || joinButton.disabled) return;
