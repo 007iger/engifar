@@ -774,6 +774,76 @@ export class PostgresGameRepository implements GameRepository {
     }
   }
 
+  async deleteExpiredEmptyRooms(olderThanMs: number): Promise<string[]> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      // まず安価な絞り込みで候補を探す(ロックなし。この時点の結果はまだ信用しない)。
+      const candidateResult = await client.query<{ id: string }>(
+        `SELECT r.id
+         FROM room r
+         WHERE EXISTS (SELECT 1 FROM participant p WHERE p.room_id = r.id)
+           AND NOT EXISTS (
+             SELECT 1 FROM participant p WHERE p.room_id = r.id AND p.left_at IS NULL
+           )
+           AND (SELECT MAX(p.left_at) FROM participant p WHERE p.room_id = r.id)
+             < now() - make_interval(secs => $1)`,
+        [olderThanMs / 1000],
+      );
+      const candidateIds = candidateResult.rows.map((row) => row.id);
+
+      let roomIds: string[] = [];
+      if (candidateIds.length > 0) {
+        // 候補の部屋行をFOR UPDATEでロックしてから、条件を再確認する。
+        // joinRoomも部屋行取得時にFOR UPDATEを取るため、ロック中に新規参加が割り込むことはない。
+        // (ロック取得を待っている間に参加された場合は、ここでの再確認で対象から外れる。)
+        const recheckResult = await client.query<{ id: string }>(
+          `SELECT r.id
+           FROM room r
+           WHERE r.id = ANY($1::uuid[])
+             AND NOT EXISTS (
+               SELECT 1 FROM participant p WHERE p.room_id = r.id AND p.left_at IS NULL
+             )
+             AND (SELECT MAX(p.left_at) FROM participant p WHERE p.room_id = r.id)
+               < now() - make_interval(secs => $2)
+           FOR UPDATE OF r`,
+          [candidateIds, olderThanMs / 1000],
+        );
+        roomIds = recheckResult.rows.map((row) => row.id);
+      }
+
+      if (roomIds.length > 0) {
+        // ON DELETE CASCADE/RESTRICTの解決順に依存しないよう、依存関係の深い順に明示的に削除する。
+        await client.query(
+          `DELETE FROM answer
+           WHERE game_session_id IN (SELECT id FROM game_session WHERE room_id = ANY($1::uuid[]))`,
+          [roomIds],
+        );
+        await client.query(
+          `DELETE FROM session_participant WHERE room_id = ANY($1::uuid[])`,
+          [roomIds],
+        );
+        await client.query(
+          `DELETE FROM game_session WHERE room_id = ANY($1::uuid[])`,
+          [roomIds],
+        );
+        await client.query(
+          `DELETE FROM participant WHERE room_id = ANY($1::uuid[])`,
+          [roomIds],
+        );
+        await client.query(`DELETE FROM room WHERE id = ANY($1::uuid[])`, [roomIds]);
+      }
+
+      await client.query("COMMIT");
+      return roomIds;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   private async authorizedHostSession(
     client: PoolClient,
     sessionId: string,

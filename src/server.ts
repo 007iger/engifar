@@ -3,6 +3,7 @@ import { applyMigrations } from "./db/migrate.ts";
 import { createPool } from "./db/pool.ts";
 import { PostgresGameRepository } from "./db/postgres_game_repository.ts";
 import { createQuizService } from "./quiz.ts";
+import { startRoomCleanupMonitor } from "./roomCleanup.ts";
 import { startHeartbeatMonitor } from "./ws.ts";
 
 export async function startServer(): Promise<Deno.HttpServer> {
@@ -22,6 +23,7 @@ export async function startServer(): Promise<Deno.HttpServer> {
       quizTokenSecret ? { secret: quizTokenSecret } : undefined,
     );
     startHeartbeatMonitor(repository);
+    startRoomCleanupMonitor(repository);
     return Deno.serve(createApp(repository, { quizService }));
   } catch (error) {
     await pool.end();
