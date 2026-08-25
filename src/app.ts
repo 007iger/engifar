@@ -218,12 +218,13 @@ async function handleApi(request: Request, repository: GameRepository): Promise<
       roomCode(decodeURIComponent(roomSessionsMatch[1])),
       bearerToken(request),
     );
-    broadcast(result.roomId, { type: "host_started" });
+    broadcast(result.roomId, { type: "host_started", sessionId: result.id });
     // startSessionの時点で1問目(index 0)がすでに開始されているので、
     // question_startedの配信とタイマー予約もここで行う。
     if (result.currentQuestionIndex !== null) {
       broadcast(result.roomId, {
         type: "question_started",
+        sessionId: result.id,
         questionIndex: result.currentQuestionIndex,
         timeLimitSeconds: result.answerTimeSeconds,
       });
@@ -249,6 +250,7 @@ async function handleApi(request: Request, repository: GameRepository): Promise<
     );
     broadcast(result.roomId, {
       type: "question_started",
+      sessionId: result.id,
       questionIndex: result.currentQuestionIndex ?? requestedIndex,
       timeLimitSeconds: result.answerTimeSeconds,
     });
