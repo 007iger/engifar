@@ -20,7 +20,7 @@ export type WsEvent =
     timeLimitSeconds: number;
     questionStartedAt: string | null;
   }
-  | { type: "question_ended"; questionIndex: number }
+  | { type: "question_ended"; questionIndex: number; reviewEndsAt: number }
   | { type: "all_questions_done" }
   | { type: "launch_ready"; categoryScores: Record<string, number> };
 

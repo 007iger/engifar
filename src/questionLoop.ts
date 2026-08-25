@@ -33,7 +33,10 @@ export function scheduleQuestionAdvance(
 
   const onAnswerWindowEnded = () => {
     pendingQuestions.delete(session.id);
-    broadcast(session.roomId, { type: "question_ended", questionIndex });
+    // reviewEndsAtは配信した瞬間を基準に計算するので、制限時間経過による終了・
+    // triggerEarlyQuestionEndによる早期終了のどちらでも常に正しい残り時間になる。
+    const reviewEndsAt = Date.now() + reviewTimeMs;
+    broadcast(session.roomId, { type: "question_ended", questionIndex, reviewEndsAt });
 
     setTimeout(async () => {
       const isLastQuestion = questionIndex + 1 >= session.questionCount;

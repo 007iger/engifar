@@ -953,7 +953,9 @@
       }
     }
 
-    async function showReview(index, token, session) {
+    // reviewEndsAtは正解表示の見た目のカウントダウンにのみ使う(進行の主導権はサーバーのsleepが持つ)。
+    // WSの question_ended から直接渡された場合は絶対時刻が正確、それ以外(壁時計フォールバック)は概算値。
+    async function showReview(index, token, reviewEndsAt) {
       if (
         finished || token !== phaseToken || reviewingIndex === index ||
         state.quiz.index !== index || !currentQuestionToken
@@ -977,8 +979,7 @@
       }
       if (token !== phaseToken) return;
 
-      const nextQuestionAt = answerEndTime(session) + quizConfig.reviewTimeSeconds * 1000;
-      const remainingSeconds = Math.max(0.05, (nextQuestionAt - Date.now()) / 1000);
+      const remainingSeconds = Math.max(0.05, (reviewEndsAt - Date.now()) / 1000);
       cancelClock = runClock(
         remainingSeconds,
         (shown, ratio) => {
@@ -1074,6 +1075,8 @@
           elements.answers.append(button);
         });
 
+        // 通常はWSのquestion_endedで即座にshowReviewへ進む。ここは、そのWS通知を
+        // 受け取れなかった場合の壁時計フォールバック(reviewEndsAtは概算値)。
         const remainingSeconds = Math.max(0.05, (answerEndTime(session) - Date.now()) / 1000);
         cancelClock = runClock(
           remainingSeconds,
@@ -1081,7 +1084,7 @@
             elements.timerValue.textContent = String(shown);
             elements.timer.style.setProperty("--timer-progress", String(ratio));
           },
-          () => void showReview(index, token, session)
+          () => void showReview(index, token, Date.now() + quizConfig.reviewTimeSeconds * 1000)
         );
       } catch (error) {
         if (token !== phaseToken) return;
@@ -1115,11 +1118,14 @@
         await catchUpTo(session.currentQuestionIndex);
         if (state.quiz.index === session.currentQuestionIndex) {
           await renderQuestion(session);
+          // WSのquestion_endedを取りこぼした場合の壁時計フォールバック(reviewEndsAtは概算値)。
           if (
             currentRenderedIndex === session.currentQuestionIndex &&
             reviewingIndex !== session.currentQuestionIndex && Date.now() >= answerEndTime(session)
           ) {
-            await showReview(session.currentQuestionIndex, phaseToken, session);
+            const fallbackReviewEndsAt = answerEndTime(session) +
+              quizConfig.reviewTimeSeconds * 1000;
+            await showReview(session.currentQuestionIndex, phaseToken, fallbackReviewEndsAt);
           }
         }
       } catch (error) {
@@ -1146,10 +1152,15 @@
 
     if (!finished) {
       connectRoomSocket(auth, (event) => {
-        if (
-          event.type === "question_started" || event.type === "question_ended" ||
-          event.type === "all_questions_done"
-        ) {
+        if (event.type === "question_started" || event.type === "all_questions_done") {
+          void syncSession();
+          return;
+        }
+        if (event.type === "question_ended") {
+          // ポーリングや壁時計チェックを待たず、受信した瞬間に答え合わせへ進める。
+          // まだ描画が追いついていない場合はshowReview内のガードで無視され、
+          // 直後のsyncSessionで通常の追いつき処理に任せる。
+          void showReview(event.questionIndex, phaseToken, event.reviewEndsAt);
           void syncSession();
         }
       });
