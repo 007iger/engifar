@@ -15,13 +15,11 @@ export async function startServer(): Promise<Deno.HttpServer> {
     const repository = new PostgresGameRepository(pool);
     const quizTokenSecret = Deno.env.get("QUIZ_TOKEN_SECRET");
     if (!quizTokenSecret) {
-      console.warn(
-        "QUIZ_TOKEN_SECRET is not set; quiz tokens will become invalid after a server restart",
+      throw new Error(
+        "QUIZ_TOKEN_SECRET is required so quiz tokens and choice order remain stable",
       );
     }
-    const quizService = createQuizService(
-      quizTokenSecret ? { secret: quizTokenSecret } : undefined,
-    );
+    const quizService = createQuizService({ secret: quizTokenSecret });
     startHeartbeatMonitor(repository);
     startRoomCleanupMonitor(repository);
     return Deno.serve(createApp(repository, { quizService }));

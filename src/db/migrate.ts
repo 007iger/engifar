@@ -24,6 +24,10 @@ const migrations: Migration[] = [
     version: "002_strengthen_integrity",
     url: new URL("../../migrations/002_strengthen_integrity.sql", import.meta.url),
   },
+  {
+    version: "003_quiz_choice_order_version",
+    url: new URL("../../migrations/003_quiz_choice_order_version.sql", import.meta.url),
+  },
 ];
 
 async function checksum(sql: string): Promise<string> {

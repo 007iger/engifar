@@ -14,6 +14,7 @@ function makeSession(overrides: Partial<GameSessionSummary> = {}): GameSessionSu
     sessionNumber: 1,
     status: "active",
     questionCount: 2,
+    choiceOrderVersion: 2,
     answerTimeSeconds: 0, // テストなので実質待ち時間なし
     currentQuestionIndex: 0,
     questionStartedAt: NOW,
@@ -66,23 +67,20 @@ Deno.test("最後の問題が終わったら自動でセッションを完了す
   ]);
 });
 
-Deno.test("全員回答済みなら制限時間を待たずに次へ進む", async () => {
+Deno.test("回答の有無にかかわらず設定された回答時間を確保する", async () => {
   const repository = new RecordingRepository() as unknown as GameRepository;
-  // answerTimeSecondsを長くして、自然にタイムアウトしたのではないことを確認する。
   scheduleQuestionAdvance(
     repository,
-    makeSession({ currentQuestionIndex: 0, answerTimeSeconds: 10 }),
+    makeSession({ currentQuestionIndex: 0, answerTimeSeconds: 0.05 }),
     5,
   );
 
-  const triggered = triggerEarlyQuestionEnd(SESSION_ID, 0);
-  assert.equal(triggered, true);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual((repository as unknown as RecordingRepository).advancedFrom, []);
 
-  await new Promise((resolve) => setTimeout(resolve, 50));
-
+  await new Promise((resolve) => setTimeout(resolve, 70));
   assert.deepEqual((repository as unknown as RecordingRepository).advancedFrom, [0]);
 });
-
 Deno.test("対象の問題がすでに終わっていれば早期終了は何もしない", () => {
   const triggered = triggerEarlyQuestionEnd("no-such-session", 0);
   assert.equal(triggered, false);
@@ -129,7 +127,8 @@ Deno.test(
 
     try {
       const socket = new WebSocket(
-        `ws://localhost:8199/ws?roomCode=ABC234&token=${WS_TOKEN}`,
+        "ws://localhost:8199/ws?roomCode=ABC234",
+        ["engifar-v1", WS_TOKEN],
       );
       const received: Array<Record<string, unknown> & { receivedAt: number }> = [];
       socket.onmessage = (event) => {

@@ -35,6 +35,7 @@ export interface GameSessionSummary {
   sessionNumber: number;
   status: SessionStatus;
   questionCount: number;
+  choiceOrderVersion: number;
   answerTimeSeconds: number;
   currentQuestionIndex: number | null;
   questionStartedAt: string | null;
@@ -67,6 +68,7 @@ export interface SessionResultParticipantSource {
 
 export interface SessionResultSource {
   session: GameSessionSummary;
+  requesterParticipantId: string;
   participants: SessionResultParticipantSource[];
 }
 
@@ -85,6 +87,16 @@ export interface ParticipantQuizResult {
 export interface SessionResults {
   sessionId: string;
   questionCount: number;
+  personal: ParticipantQuizResult;
+  team: {
+    participantCount: number;
+    answeredCount: number;
+    possibleAnswerCount: number;
+    completionRate: number;
+    power: number;
+    safety: number;
+    categoryScores: Record<string, number>;
+  };
   participants: ParticipantQuizResult[];
 }
 
@@ -112,6 +124,7 @@ export interface GameRepository {
   getSessionForParticipant(
     sessionId: string,
     accessToken: string,
+    reviewTimeSeconds?: number,
   ): Promise<GameSessionSummary>;
   /** 完了済みセッションの参加者と回答を、共有結果の集計用に取得する。 */
   getSessionResultSource(
@@ -142,9 +155,6 @@ export interface GameRepository {
   ): Promise<GameSessionSummary | null>;
   /** サーバー主導の進行ループ専用(トークン不要)。最後の問題が終わった時にセッションを完了させる。 */
   completeSessionAutomatically(sessionId: string): Promise<GameSessionSummary | null>;
-
-  /** そのセッションにまだ残っている参加者全員が、指定した問題に回答済みかどうか。 */
-  haveAllParticipantsAnswered(sessionId: string, questionIndex: number): Promise<boolean>;
 
   /**
    * WebSocketの切断(正常切断・ハートビート切れの両方)を検知した時に呼ぶ。

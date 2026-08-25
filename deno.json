@@ -18,7 +18,7 @@
     "types": ["npm:@types/pg"]
   },
   "fmt": {
-    "include": ["deno.json", "src/", "scripts/", "tests/"],
+    "include": ["deno.json", "data/", "src/", "scripts/", "tests/"],
     "lineWidth": 100,
     "semiColons": true,
     "singleQuote": false

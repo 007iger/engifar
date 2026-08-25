@@ -30,3 +30,13 @@ Deno.test("integrity migration strengthens deletion and answer range rules", asy
   assert.match(migration, /NEW\.question_index >= session_question_count/);
   assert.match(migration, /CREATE TRIGGER game_session_question_count_covers_answers/);
 });
+
+Deno.test("choice order migration preserves old sessions and versions new sessions", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/003_quiz_choice_order_version.sql", import.meta.url),
+  );
+
+  assert.match(migration, /ADD COLUMN choice_order_version smallint NOT NULL DEFAULT 1/);
+  assert.match(migration, /ALTER COLUMN choice_order_version SET DEFAULT 2/);
+  assert.match(migration, /CHECK \(choice_order_version IN \(1, 2\)\)/);
+});
