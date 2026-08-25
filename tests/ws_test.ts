@@ -35,7 +35,10 @@ class FakeRepository implements GameRepository {
   getRoom(): Promise<RoomDetail> {
     return Promise.reject(new Error("not used"));
   }
-  authenticateParticipant(_roomCode: string, accessToken: string): Promise<AuthenticatedParticipant> {
+  authenticateParticipant(
+    _roomCode: string,
+    accessToken: string,
+  ): Promise<AuthenticatedParticipant> {
     if (accessToken !== TOKEN) throw new Error("invalid token");
     return Promise.resolve({ roomId: membership.room.id, participant: membership.participant });
   }

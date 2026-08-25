@@ -305,7 +305,11 @@ export class PostgresGameRepository implements GameRepository {
         throw new ApiError(404, "ROOM_NOT_FOUND", "Room not found");
       }
       if (existing.rows[0].status !== "lobby") {
-        throw new ApiError(409, "ROOM_NOT_IN_LOBBY", "The genre can only be set before the game starts");
+        throw new ApiError(
+          409,
+          "ROOM_NOT_IN_LOBBY",
+          "The genre can only be set before the game starts",
+        );
       }
       throw new ApiError(403, "HOST_REQUIRED", "A valid host token is required");
     }

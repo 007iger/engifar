@@ -4,7 +4,12 @@ import type { GameRepository, ParticipantSummary } from "./types.ts";
 // 認証はGameRepository.authenticateParticipantに委譲する(DB層の詳細はここでは知らない)。
 
 export type WsEvent =
-  | { type: "player_joined"; participantId: string; displayName: string; role: ParticipantSummary["role"] }
+  | {
+    type: "player_joined";
+    participantId: string;
+    displayName: string;
+    role: ParticipantSummary["role"];
+  }
   | { type: "player_left"; participantId: string }
   | { type: "field_selected"; genre: string }
   | { type: "host_started" }
