@@ -12,8 +12,8 @@ export type WsEvent =
   }
   | { type: "player_left"; participantId: string }
   | { type: "field_selected"; genre: string }
-  | { type: "host_started" }
-  | { type: "question_started"; questionIndex: number; timeLimitSeconds: number }
+  | { type: "host_started"; sessionId: string }
+  | { type: "question_started"; sessionId: string; questionIndex: number; timeLimitSeconds: number }
   | { type: "question_ended"; questionIndex: number }
   | { type: "all_questions_done" }
   | { type: "launch_ready"; categoryScores: Record<string, number> };
