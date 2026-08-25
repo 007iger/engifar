@@ -22,5 +22,8 @@
     "lineWidth": 100,
     "semiColons": true,
     "singleQuote": false
+  },
+  "lint": {
+    "include": ["src/", "scripts/", "tests/"]
   }
 }
