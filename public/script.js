@@ -1363,15 +1363,9 @@
       elements.current.textContent = String(questionIndex + 1).padStart(2, "0");
       elements.category.textContent = question.category;
       elements.difficulty.textContent = difficultyLabel(question.weight);
-<<<<<<< Updated upstream:public/script.js
       elements.progress.style.width = `${((questionIndex + 1) / quizConfig.questionCount) * 100}%`;
       elements.timerLabel.textContent = "回答";
       elements.timerValue.textContent = String(start.answerTimeSeconds);
-=======
-      elements.progress.style.width = `${((questionIndex + 1) / questionBank.length) * 100}%`;
-      elements.timerLabel.textContent = "回答時間";
-      elements.timerValue.textContent = String(ANSWER_SECONDS);
->>>>>>> Stashed changes:public/index.js
       elements.timer.style.setProperty("--timer-progress", "1");
       elements.instruction.textContent = question.instruction;
       elements.question.textContent = question.question;
