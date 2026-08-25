@@ -1,16 +1,12 @@
-<<<<<<< Updated upstream
-const message = await fetch("/welcome-message")
-document.querySelector("#welcomeMessage").innerText = await message.text()
-=======
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "engifar-mission-v3";
-  const LEGACY_STORAGE_KEY = "engifar-mission-v2";
+  const STORAGE_KEY = "engifar-mission-v4";
+  const LEGACY_STORAGE_KEY = "engifar-mission-v3";
+  const ROOM_AUTH_STORAGE_KEY = "engifar-room-auth-v1";
   const OUTPUT_THRESHOLD = 60;
   const SAFETY_THRESHOLD = 75;
-  const ANSWER_SECONDS = 10;
-  const REVIEW_SECONDS = 5;
+  let quizConfig = Object.freeze({ questionCount: 24, answerTimeSeconds: 10, reviewTimeSeconds: 5 });
   const FLIGHT_RANKS = Object.freeze([
     { key: "crash", min: 0, name: "不時着級", destination: "海（不時着）", color: "#62e4ec", legs: ["sky", "atmosphere-edge"], crashLanding: true },
     { key: "space_entry", min: 2800, name: "宇宙突入級", destination: "宇宙空間", color: "#8fe8ff", legs: ["sky", "atmosphere-edge", "space"] },
@@ -30,52 +26,11 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     "セキュリティ": { role: "TRUST ENGINEER", copy: "安心して使えるサービス体験を育てるクルー" }
   });
 
-  const rawQuestions = [
-    { category: "フロントエンド", weight: 1, instruction: "「EngiFar」をページで最も重要な見出しとして表示します。空欄に入るHTMLタグ名を選んでください。", question: "<＿＿＿>EngiFar</＿＿＿>", choices: ["h1", "p", "span", "div"], answer: 0, explanation: "h1は、ページの中心となる見出しを表すHTMLタグです。" },
-    { category: "フロントエンド", weight: 1, instruction: "「プロフィール」から /profile ページへ移動できるリンクを作ります。URLを指定する属性を選んでください。", question: '<a ＿＿＿="/profile">プロフィール</a>', choices: ["href", "src", "action", "to"], answer: 0, explanation: "aタグのhref属性に移動先のURLを指定します。" },
-    { category: "フロントエンド", weight: 1, instruction: "タイトルの文字色を緑色にします。CSSで文字色を指定するプロパティを選んでください。", question: ".title {\n  ＿＿＿: #c9f765;\n}", choices: ["color", "background-color", "font-color", "text-color"], answer: 0, explanation: "colorプロパティは文字の色を指定します。" },
-    { category: "フロントエンド", weight: 1.2, instruction: "ボタンをクリックしたときにstart関数が動くようにします。空欄に入るイベント名を選んでください。", question: 'button.addEventListener("＿＿＿", start);', choices: ["click", "press", "tap", "onClick"], answer: 0, explanation: "clickイベントは、ボタンなどがクリックされたときに発生します。" },
-
-    { category: "バックエンド", weight: 1, instruction: "DenoでWebサーバーを起動して「Hello」と返します。サーバーを開始するメソッド名を選んでください。", question: 'Deno.＿＿＿(() => new Response("Hello"));', choices: ["serve", "start", "listenWeb", "runServer"], answer: 0, explanation: "Deno.serve()を使うと、HTTPリクエストを受け取るサーバーを起動できます。" },
-    { category: "バックエンド", weight: 1, instruction: "非同期のfetchUser関数が完了するまで待ち、結果をuserへ入れます。空欄に入るキーワードを選んでください。", question: "const user = ＿＿＿ fetchUser();", choices: ["await", "wait", "async", "then"], answer: 0, explanation: "awaitはPromiseの完了を待って、その結果を受け取ります。" },
-    { category: "バックエンド", weight: 1.1, instruction: "JavaScriptのオブジェクトをAPIで送れるJSON文字列へ変換します。使うメソッド名を選んでください。", question: "const body = JSON.＿＿＿({ ok: true });", choices: ["stringify", "parse", "encode", "toJSON"], answer: 0, explanation: "JSON.stringify()は、オブジェクトをJSON形式の文字列へ変換します。" },
-    { category: "バックエンド", weight: 1.2, instruction: "config.txtの内容を文字列として読み込みます。Denoのファイル読み込みメソッドを選んでください。", question: 'const text = await Deno.＿＿＿("config.txt");', choices: ["readTextFile", "readFileText", "openText", "load"], answer: 0, explanation: "Deno.readTextFile()は、ファイルの内容を文字列として読み取ります。" },
-
-    { category: "データベース", weight: 1, instruction: "usersテーブルにあるすべての列を取得します。空欄に入るSQLの命令を選んでください。", question: "＿＿＿ * FROM users;", choices: ["SELECT", "GET", "READ", "FIND"], answer: 0, explanation: "SELECTは、データベースからデータを取得するSQLの命令です。" },
-    { category: "データベース", weight: 1, instruction: "usersテーブルからidが3の行だけを取得します。条件を指定するキーワードを選んでください。", question: "SELECT * FROM users\n＿＿＿ id = 3;", choices: ["WHERE", "WHEN", "IF", "FILTER"], answer: 0, explanation: "WHEREを使うと、取得する行の条件を指定できます。" },
-    { category: "データベース", weight: 1.1, instruction: "usersテーブルへ名前がAoiのデータを1件追加します。空欄に入るSQLの命令を選んでください。", question: '＿＿＿ INTO users (name)\nVALUES ("Aoi");', choices: ["INSERT", "ADD", "CREATE", "PUSH"], answer: 0, explanation: "INSERT INTOは、テーブルへ新しい行を追加するSQLの命令です。" },
-    { category: "データベース", weight: 1.2, instruction: "ordersテーブルをuser_idごとにまとめ、ユーザー別の注文数を数えます。空欄を選んでください。", question: "SELECT user_id, COUNT(*)\nFROM orders\n＿＿＿ user_id;", choices: ["GROUP BY", "ORDER BY", "COLLECT BY", "PARTITION WITH"], answer: 0, explanation: "GROUP BYは、同じuser_idの行をグループにまとめて集計します。" },
-
-    { category: "API", weight: 1, instruction: "APIからユーザー一覧を取得します。データ取得に使うHTTPメソッドを選んでください。", question: 'fetch("/api/users", {\n  method: "＿＿＿"\n});', choices: ["GET", "POST", "PUT", "DELETE"], answer: 0, explanation: "GETは、サーバーからデータを取得するときに使うHTTPメソッドです。" },
-    { category: "API", weight: 1, instruction: "APIへ新しいユーザー情報を送って登録します。新規作成に使うHTTPメソッドを選んでください。", question: 'fetch("/api/users", {\n  method: "＿＿＿",\n  body: JSON.stringify(user)\n});', choices: ["POST", "GET", "HEAD", "TRACE"], answer: 0, explanation: "POSTは、サーバーへデータを送り、新しいデータを作るときに使います。" },
-    { category: "API", weight: 1, instruction: "APIの処理が正常に完了したことを表す、基本的なHTTPステータスを選んでください。", question: "HTTP/1.1 ＿＿＿ OK", choices: ["200", "404", "500", "301"], answer: 0, explanation: "200 OKは、リクエストが正常に処理されたことを表します。" },
-    { category: "API", weight: 1.2, instruction: "fetchで受け取ったレスポンス本文をJSONとして読み取ります。空欄に入るメソッド名を選んでください。", question: 'const response = await fetch("/api/users");\nconst data = await response.＿＿＿();', choices: ["json", "parseJSON", "toObject", "bodyJSON"], answer: 0, explanation: "Responseのjson()は、レスポンス本文をJSONとして読み取ります。" },
-
-    { category: "インフラ", weight: 1, instruction: "Gitで現在の変更状況を確認します。空欄に入るコマンドを選んでください。", question: "git ＿＿＿", choices: ["status", "check", "state", "show-all"], answer: 0, explanation: "git statusは、変更されたファイルや現在のブランチ状態を表示します。" },
-    { category: "インフラ", weight: 1, instruction: "package.jsonに書かれた依存パッケージをインストールします。空欄に入るnpmコマンドを選んでください。", question: "npm ＿＿＿", choices: ["install", "download", "setup", "packages"], answer: 0, explanation: "npm installは、package.jsonを読み、必要なパッケージをインストールします。" },
-    { category: "インフラ", weight: 1.1, instruction: "package.jsonのscriptsに登録されたdevコマンドを実行します。空欄を選んでください。", question: "npm run ＿＿＿", choices: ["dev", "install", "package", "node"], answer: 0, explanation: "npm run devは、scriptsに登録されたdevコマンドを実行します。" },
-    { category: "インフラ", weight: 1.2, instruction: "Docker Composeのコンテナをバックグラウンドで起動します。空欄に入るオプションを選んでください。", question: "docker compose up ＿＿＿", choices: ["-d", "-b", "--hide", "--later"], answer: 0, explanation: "-dを付けると、コンテナをバックグラウンドで起動できます。" },
-
-    { category: "セキュリティ", weight: 1, instruction: "入力したパスワードの文字が画面上で隠れて表示される入力欄を作ります。typeの値を選んでください。", question: '<input type="＿＿＿" name="password">', choices: ["password", "secret", "hidden-text", "secure"], answer: 0, explanation: 'type="password"にすると、入力文字が伏せて表示されます。' },
-    { category: "セキュリティ", weight: 1, instruction: "ユーザー入力をHTMLとして解釈せず、文字列のまま画面へ表示します。使うプロパティを選んでください。", question: "message.＿＿＿ = userInput;", choices: ["textContent", "innerHTML", "outerHTML", "htmlValue"], answer: 0, explanation: "textContentは内容を文字列として扱い、安心できる画面表示につながります。" },
-    { category: "セキュリティ", weight: 1.1, instruction: "保存前のパスワードからbcryptのハッシュ値を作ります。空欄に入るメソッド名を選んでください。", question: "const hash = await bcrypt.＿＿＿(password, 10);", choices: ["hash", "encrypt", "protect", "secure"], answer: 0, explanation: "bcrypt.hash()は、パスワードから保存用のハッシュ値を生成します。" },
-    { category: "セキュリティ", weight: 1.2, instruction: "userIdをSQL文字列へ直接つなげず、パラメータとして渡します。空欄に入るプレースホルダーを選んでください。", question: 'const result = await db.query(\n  "SELECT * FROM users WHERE id = ＿＿＿",\n  [userId]\n);', choices: ["$1", "userId", "input", "raw"], answer: 0, explanation: "$1と値の配列を使うと、入力値をパラメータとして安全に渡せます。" }
-  ];
-
-  const questionBank = rawQuestions.map((item, index) => {
-    const shift = index % item.choices.length;
-    return {
-      ...item,
-      choices: item.choices.slice(shift).concat(item.choices.slice(0, shift)),
-      answer: (item.answer - shift + item.choices.length) % item.choices.length
-    };
-  });
-
   const app = document.querySelector("#app");
   if (!app) return;
 
   const page = app.dataset.page || "home";
-  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reducedMotion = globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function clamp(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
@@ -86,20 +41,127 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     return Number.isFinite(number) ? number : fallback;
   }
 
+  async function requestApi(path, options = {}) {
+    const headers = new Headers(options.headers || {});
+    if (options.body !== undefined && !headers.has("content-type")) {
+      headers.set("content-type", "application/json");
+    }
+    const response = await fetch(path, { ...options, headers });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(payload && payload.error && payload.error.message
+        ? payload.error.message
+        : `API request failed (${response.status})`);
+      error.code = payload && payload.error ? payload.error.code : null;
+      error.status = response.status;
+      throw error;
+    }
+    return payload.data;
+  }
+
+  function saveRoomAuth(membership) {
+    const value = {
+      roomCode: membership.room.code,
+      roomId: membership.room.id,
+      accessToken: membership.accessToken,
+      participantId: membership.participant.id,
+      role: membership.participant.role
+    };
+    globalThis.sessionStorage.setItem(ROOM_AUTH_STORAGE_KEY, JSON.stringify(value));
+    return value;
+  }
+
+  function loadRoomAuth(code) {
+    try {
+      const value = JSON.parse(globalThis.sessionStorage.getItem(ROOM_AUTH_STORAGE_KEY) || "null");
+      if (!value || value.roomCode !== code || typeof value.accessToken !== "string") return null;
+      return value;
+    } catch {
+      return null;
+    }
+  }
+
+  function bearerHeaders(auth) {
+    return { authorization: `Bearer ${auth.accessToken}` };
+  }
+
+  function connectRoomSocket(auth, onEvent = () => {}, onStatus = () => {}) {
+    let socket = null;
+    let heartbeatTimer = null;
+    let reconnectTimer = null;
+    let stopped = false;
+    let retryCount = 0;
+
+    function clearTimers() {
+      if (heartbeatTimer !== null) globalThis.clearInterval(heartbeatTimer);
+      if (reconnectTimer !== null) globalThis.clearTimeout(reconnectTimer);
+      heartbeatTimer = null;
+      reconnectTimer = null;
+    }
+
+    function open() {
+      if (stopped) return;
+      const url = new URL("/ws", globalThis.location.href);
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      url.searchParams.set("roomCode", auth.roomCode);
+      url.searchParams.set("token", auth.accessToken);
+      socket = new WebSocket(url);
+      onStatus("connecting");
+
+      socket.addEventListener("open", () => {
+        retryCount = 0;
+        onStatus("connected");
+        heartbeatTimer = globalThis.setInterval(() => {
+          if (socket && socket.readyState === WebSocket.OPEN) socket.send("heartbeat");
+        }, 5_000);
+      });
+      socket.addEventListener("message", (event) => {
+        try {
+          onEvent(JSON.parse(event.data));
+        } catch {
+          // Unknown messages are ignored so a malformed event cannot stop reconnection.
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (heartbeatTimer !== null) globalThis.clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+        socket = null;
+        if (stopped) return;
+        onStatus("reconnecting");
+        retryCount += 1;
+        const delay = Math.min(5_000, 500 * 2 ** Math.min(retryCount - 1, 4));
+        reconnectTimer = globalThis.setTimeout(open, delay);
+      });
+      socket.addEventListener("error", () => onStatus("reconnecting"));
+    }
+
+    function stop() {
+      if (stopped) return;
+      stopped = true;
+      clearTimers();
+      socket?.close();
+    }
+
+    globalThis.addEventListener("pagehide", stop, { once: true });
+    open();
+    return { stop };
+  }
+
   function createDefaultState() {
     return {
-      version: 3,
+      version: 4,
       missionId: String(Date.now()),
       updatedAt: Date.now(),
       status: "setup",
       playerConfigured: false,
       cardOpened: false,
       player: { name: "CREW MEMBER", color: "#54d37c" },
-      room: { mode: "create", name: "ロケット部", code: "------" },
+      room: { mode: "create", name: "ロケット部", code: "------", sessionId: null },
       quiz: {
         index: 0,
-        answers: Array(questionBank.length).fill(null),
-        records: Array(questionBank.length).fill(null)
+        answers: Array(quizConfig.questionCount).fill(null),
+        records: Array(quizConfig.questionCount).fill(null),
+        progressToken: null
       },
       metrics: null,
       outcome: null
@@ -118,10 +180,10 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     const playerSource = source.player && typeof source.player === "object" ? source.player : {};
     const quizSource = source.quiz && typeof source.quiz === "object" ? source.quiz : {};
     const roomSource = source.room && typeof source.room === "object" ? source.room : {};
-    const answers = Array.isArray(quizSource.answers) ? quizSource.answers.slice(0, questionBank.length) : [];
-    const records = Array.isArray(quizSource.records) ? quizSource.records.slice(0, questionBank.length) : [];
-    while (answers.length < questionBank.length) answers.push(null);
-    while (records.length < questionBank.length) records.push(null);
+    const answers = Array.isArray(quizSource.answers) ? quizSource.answers.slice(0, quizConfig.questionCount) : [];
+    const records = Array.isArray(quizSource.records) ? quizSource.records.slice(0, quizConfig.questionCount) : [];
+    while (answers.length < quizConfig.questionCount) answers.push(null);
+    while (records.length < quizConfig.questionCount) records.push(null);
 
     let metrics = null;
     if (source.metrics && Number.isFinite(Number(source.metrics.power)) && Number.isFinite(Number(source.metrics.safety))) {
@@ -152,7 +214,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
 
     const name = String(playerSource.name || "CREW MEMBER").trim().slice(0, 18) || "CREW MEMBER";
     return {
-      version: 3,
+      version: 4,
       missionId: String(source.missionId || fallback.missionId),
       updatedAt: Math.max(0, safeNumber(source.updatedAt, 0)),
       status: String(source.status || (outcome ? "result" : metrics ? "rocket" : "setup")),
@@ -162,12 +224,14 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
       room: {
         mode: roomSource.mode === "join" ? "join" : "create",
         name: String(roomSource.name || "ロケット部").trim().slice(0, 20) || "ロケット部",
-        code: String(roomSource.code || "------").trim().toUpperCase().slice(0, 8) || "------"
+        code: String(roomSource.code || "------").trim().toUpperCase().slice(0, 8) || "------",
+        sessionId: typeof roomSource.sessionId === "string" ? roomSource.sessionId : null
       },
       quiz: {
-        index: Math.round(clamp(safeNumber(quizSource.index, 0), 0, questionBank.length)),
+        index: Math.round(clamp(safeNumber(quizSource.index, 0), 0, quizConfig.questionCount)),
         answers,
-        records
+        records,
+        progressToken: typeof quizSource.progressToken === "string" ? quizSource.progressToken : null
       },
       metrics,
       outcome
@@ -176,7 +240,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
 
   function readHashState() {
     try {
-      const parameters = new URLSearchParams(window.location.hash.slice(1));
+      const parameters = new URLSearchParams(globalThis.location.hash.slice(1));
       const payload = parameters.get("mission");
       return payload ? normalizeState(JSON.parse(payload)) : null;
     } catch {
@@ -186,7 +250,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
 
   function readStoredState(key) {
     try {
-      const value = window.sessionStorage.getItem(key);
+      const value = globalThis.sessionStorage.getItem(key);
       return value ? normalizeState(JSON.parse(value)) : null;
     } catch {
       return null;
@@ -211,7 +275,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     state = normalizeState(nextState);
     state.updatedAt = nextState.updatedAt;
     try {
-      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      globalThis.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
       // URL hash remains available as a portable fallback.
     }
@@ -224,7 +288,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
 
   function goTo(path, nextState = state) {
     const saved = persist(nextState);
-    window.location.href = `${path}${stateHash(saved)}`;
+    globalThis.location.href = `${path}${stateHash(saved)}`;
   }
 
   function setStateLink(element, path, nextState = state) {
@@ -311,7 +375,11 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     const createButton = document.querySelector("#start-button");
     const joinButton = document.querySelector("#enter-room-button");
     const roomCode = document.querySelector("#room-code");
-    if (!nameInput || !colorInput || !hueSlider || !palette || !createButton || !joinButton) return;
+    const roomStatus = document.querySelector("#home-room-status");
+    if (
+      !nameInput || !colorInput || !hueSlider || !palette || !joinToggle || !joinPanel ||
+      !createButton || !joinButton || !roomCode || !roomStatus
+    ) return;
 
     nameInput.value = state.player.name;
     colorInput.value = state.player.color;
@@ -368,12 +436,16 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
 
     hueSlider.addEventListener("input", () => renderPalette(true));
 
-    function createRoomCode() {
-      const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-      return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
-    }
+    async function enterRoom(mode) {
+      if (createButton.disabled || joinButton.disabled) return;
+      const requestedCode = roomCode.value.trim().toUpperCase();
+      if (mode === "join" && !/^[A-Z0-9]{6,8}$/.test(requestedCode)) {
+        roomStatus.textContent = "招待コードを6〜8文字の英数字で入力してください。";
+        roomStatus.dataset.kind = "error";
+        roomCode.focus();
+        return;
+      }
 
-    function enterRoom(mode) {
       const fresh = createDefaultState();
       fresh.playerConfigured = true;
       fresh.status = "room";
@@ -381,12 +453,37 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
         name: nameInput.value.trim().slice(0, 18) || "CREW MEMBER",
         color: normalizeColor(colorInput.value)
       };
-      fresh.room = mode === "join"
-        ? { mode: "join", name: "招待ルーム", code: (roomCode.value.trim().toUpperCase() || "STAR24").slice(0, 8) }
-        : { mode: "create", name: "ENGIFAR", code: createRoomCode() };
       createButton.disabled = true;
       joinButton.disabled = true;
-      goTo("./room.html", fresh);
+      roomStatus.textContent = mode === "create" ? "ルームを作成しています…" : "ルームへ参加しています…";
+      roomStatus.dataset.kind = "loading";
+
+      try {
+        const path = mode === "create"
+          ? "/api/rooms"
+          : `/api/rooms/${encodeURIComponent(requestedCode)}/participants`;
+        const membership = await requestApi(path, {
+          method: "POST",
+          body: JSON.stringify({ displayName: fresh.player.name })
+        });
+        saveRoomAuth(membership);
+        fresh.room = {
+          mode,
+          name: mode === "join" ? "招待ルーム" : "ENGIFAR",
+          code: membership.room.code,
+          sessionId: null
+        };
+        goTo("./room.html", fresh);
+      } catch (error) {
+        const messages = {
+          ROOM_NOT_FOUND: "その招待コードのルームは見つかりませんでした。",
+          ROOM_NOT_JOINABLE: "このルームのクイズはすでに始まっています。"
+        };
+        roomStatus.textContent = messages[error.code] || `ルームへ接続できませんでした。${error.message}`;
+        roomStatus.dataset.kind = "error";
+        createButton.disabled = false;
+        joinButton.disabled = false;
+      }
     }
 
     function toggleJoinPanel() {
@@ -396,28 +493,164 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     }
 
     joinToggle.addEventListener("click", toggleJoinPanel);
-    createButton.addEventListener("click", () => enterRoom("create"));
-    joinButton.addEventListener("click", () => enterRoom("join"));
+    createButton.addEventListener("click", () => void enterRoom("create"));
+    joinButton.addEventListener("click", () => void enterRoom("join"));
     nameInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") enterRoom("create");
+      if (event.key === "Enter") void enterRoom(joinPanel.hidden ? "create" : "join");
+    });
+    roomCode.addEventListener("input", () => {
+      roomCode.value = roomCode.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+      roomStatus.textContent = "";
+      roomStatus.dataset.kind = "";
+    });
+    roomCode.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") void enterRoom("join");
     });
   }
 
   function initRoom() {
     if (!requirePlayer()) return;
-    const colorTargets = [document.querySelector("#room-player-avatar"), document.querySelector("#room-list-avatar")];
-    colorTargets.forEach((target) => target && target.style.setProperty("--crew-color", state.player.color));
-    document.querySelector("#room-player-name").textContent = state.player.name;
-    document.querySelector("#room-code-value").textContent = state.room.code;
+    const playerAvatar = document.querySelector("#room-player-avatar");
+    const playerList = document.querySelector("#room-player-list");
+    const roomCodeValue = document.querySelector("#room-code-value");
+    const startButton = document.querySelector("#room-start-button");
+    const lobbyMessage = document.querySelector("#room-lobby-message");
+    const lobbyStatus = document.querySelector("#room-lobby-status");
+    if (
+      !playerAvatar || !playerList || !roomCodeValue || !startButton || !lobbyMessage ||
+      !lobbyStatus
+    ) return;
+
+    playerAvatar.style.setProperty("--crew-color", state.player.color);
+    roomCodeValue.textContent = state.room.code;
     setStateLink(document.querySelector("#room-home-link"), "./index.html", state);
-    document.querySelector("#room-start-button").addEventListener("click", () => {
+
+    const auth = loadRoomAuth(state.room.code);
+    if (!auth) {
+      startButton.disabled = true;
+      lobbyStatus.textContent = "参加情報を確認できません。トップ画面からルームへ入り直してください。";
+      lobbyStatus.dataset.kind = "error";
+      return;
+    }
+
+    const crewColors = ["#54d37c", "#5ca9ff", "#f5cf4b", "#ff665f", "#b889ff", "#62e4ec"];
+    let enteredQuiz = false;
+    let refreshing = false;
+
+    function colorFor(participant, index) {
+      if (participant.id === auth.participantId) return state.player.color;
+      let hash = 0;
+      for (const character of participant.id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+      return crewColors[(hash + index) % crewColors.length];
+    }
+
+    function renderParticipants(participants) {
+      playerList.replaceChildren();
+      participants.forEach((participant, index) => {
+        const card = document.createElement("div");
+        card.className = "room-player-card";
+        if (participant.id === auth.participantId) card.classList.add("is-you");
+
+        const avatar = document.createElement("span");
+        avatar.className = "crew-avatar crew-avatar--small";
+        avatar.style.setProperty("--crew-color", colorFor(participant, index));
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.append(document.createElement("i"));
+
+        const copy = document.createElement("div");
+        const role = document.createElement("small");
+        role.textContent = participant.role === "host" ? "HOST CREW" : "READY CREW";
+        const name = document.createElement("strong");
+        name.textContent = participant.displayName;
+        copy.append(role, name);
+
+        const badge = document.createElement("span");
+        badge.className = "ready-badge";
+        badge.textContent = participant.id === auth.participantId ? "YOU" : "準備OK";
+        card.append(avatar, copy, badge);
+        playerList.append(card);
+      });
+      lobbyMessage.textContent = `${participants.length}人のクルーが参加中です。招待コードを仲間に伝えましょう。`;
+    }
+
+    function enterQuiz(session) {
+      if (enteredQuiz || !session || !session.id) return;
+      enteredQuiz = true;
       const next = createDefaultState();
       next.playerConfigured = true;
       next.player = { ...state.player };
-      next.room = { ...state.room };
+      next.room = { ...state.room, sessionId: session.id };
       next.status = "quiz";
       goTo("./quiz.html", next);
-    });
+    }
+
+    async function refreshRoom() {
+      if (refreshing || enteredQuiz) return;
+      refreshing = true;
+      try {
+        const room = await requestApi(`/api/rooms/${encodeURIComponent(state.room.code)}`);
+        renderParticipants(room.participants);
+        lobbyStatus.textContent = "サーバーに接続済み";
+        lobbyStatus.dataset.kind = "connected";
+        if (room.status === "playing" && room.activeSession) enterQuiz(room.activeSession);
+        if (room.status === "results") {
+          startButton.disabled = true;
+          lobbyStatus.textContent = "このルームのクイズは終了しました。";
+        }
+      } catch (error) {
+        lobbyStatus.textContent = `ロビーを更新できませんでした。${error.message}`;
+        lobbyStatus.dataset.kind = "error";
+      } finally {
+        refreshing = false;
+      }
+    }
+
+    if (auth.role === "host") {
+      startButton.addEventListener("click", async () => {
+        if (startButton.disabled || enteredQuiz) return;
+        startButton.disabled = true;
+        startButton.querySelector("span").textContent = "開始しています…";
+        try {
+          const session = await requestApi(
+            `/api/rooms/${encodeURIComponent(state.room.code)}/sessions`,
+            { method: "POST", headers: bearerHeaders(auth) }
+          );
+          enterQuiz(session);
+        } catch (error) {
+          lobbyStatus.textContent = `クイズを開始できませんでした。${error.message}`;
+          lobbyStatus.dataset.kind = "error";
+          startButton.disabled = false;
+          startButton.querySelector("span").textContent = "クイズを始める";
+        }
+      });
+    } else {
+      startButton.disabled = true;
+      startButton.querySelector("span").textContent = "ホストの開始を待っています";
+      lobbyMessage.textContent = "ホストがクイズを開始すると、自動で同じクイズへ移動します。";
+    }
+
+    connectRoomSocket(
+      auth,
+      (event) => {
+        if (event.type === "player_joined" || event.type === "player_left") {
+          void refreshRoom();
+        } else if (event.type === "host_started" && event.session) {
+          enterQuiz(event.session);
+        }
+      },
+      (connectionStatus) => {
+        if (lobbyStatus.dataset.kind === "error") return;
+        lobbyStatus.textContent = connectionStatus === "connected"
+          ? "リアルタイム接続済み"
+          : connectionStatus === "reconnecting"
+          ? "再接続しています…"
+          : "接続しています…";
+        lobbyStatus.dataset.kind = connectionStatus === "connected" ? "connected" : "loading";
+      }
+    );
+
+    void refreshRoom();
+    globalThis.setInterval(() => void refreshRoom(), 5_000);
   }
 
   function initGuide() {
@@ -469,7 +702,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     function openGuide(trigger) {
       returnFocus = trigger || document.activeElement;
       document.body.classList.add("guide-open");
-      window.requestAnimationFrame(() => modal.focus());
+      globalThis.requestAnimationFrame(() => modal.focus());
     }
     function closeGuide() {
       document.body.classList.remove("guide-open");
@@ -484,12 +717,12 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     if (page === "home") {
       let alreadyShown = false;
       try {
-        alreadyShown = window.sessionStorage.getItem("engifar-guide-shown") === "1";
-        window.sessionStorage.setItem("engifar-guide-shown", "1");
+        alreadyShown = globalThis.sessionStorage.getItem("engifar-guide-shown") === "1";
+        globalThis.sessionStorage.setItem("engifar-guide-shown", "1");
       } catch {
         alreadyShown = false;
       }
-      if (!alreadyShown) window.setTimeout(() => openGuide(null), reducedMotion ? 0 : 350);
+      if (!alreadyShown) globalThis.setTimeout(() => openGuide(null), reducedMotion ? 0 : 350);
     }
   }
 
@@ -500,31 +733,41 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
   }
 
   function computeMetrics(records) {
-    const categories = [...new Set(questionBank.map((question) => question.category))];
+    const completedRecords = records.filter((record) =>
+      record && typeof record.category === "string" && Number.isFinite(Number(record.weight))
+    );
+    const categories = [...new Set(completedRecords.map((record) => record.category))];
     let correctWeight = 0;
     let totalWeight = 0;
     const categoryScores = {};
 
-    questionBank.forEach((question, index) => {
-      totalWeight += question.weight;
-      if (records[index] && records[index].correct) correctWeight += question.weight;
+    completedRecords.forEach((record) => {
+      const weight = Math.max(0, safeNumber(record.weight));
+      totalWeight += weight;
+      if (record.correct) correctWeight += weight;
     });
 
     categories.forEach((category) => {
       let categoryCorrect = 0;
       let categoryTotal = 0;
-      questionBank.forEach((question, index) => {
-        if (question.category !== category) return;
-        categoryTotal += question.weight;
-        if (records[index] && records[index].correct) categoryCorrect += question.weight;
+      completedRecords.forEach((record) => {
+        if (record.category !== category) return;
+        const weight = Math.max(0, safeNumber(record.weight));
+        categoryTotal += weight;
+        if (record.correct) categoryCorrect += weight;
       });
-      categoryScores[category] = Math.round((categoryCorrect / categoryTotal) * 100);
+      categoryScores[category] = categoryTotal
+        ? Math.round((categoryCorrect / categoryTotal) * 100)
+        : 0;
     });
 
-    const power = Math.round((correctWeight / totalWeight) * 100);
-    const safety = Math.round(
-      categories.reduce((sum, category) => sum + categoryScores[category], 0) / categories.length
-    );
+    const power = totalWeight ? Math.round((correctWeight / totalWeight) * 100) : 0;
+    const safety = categories.length
+      ? Math.round(
+        categories.reduce((sum, category) => sum + categoryScores[category], 0) /
+          categories.length
+      )
+      : 0;
     return { power, safety, categoryScores };
   }
 
@@ -544,15 +787,361 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
         onComplete();
         return;
       }
-      requestId = window.requestAnimationFrame(frame);
+      requestId = globalThis.requestAnimationFrame(frame);
     }
 
     onTick(seconds, 1);
-    requestId = window.requestAnimationFrame(frame);
-    return () => window.cancelAnimationFrame(requestId);
+    requestId = globalThis.requestAnimationFrame(frame);
+    return () => globalThis.cancelAnimationFrame(requestId);
   }
 
-  function initQuiz() {
+  async function initMultiplayerQuiz(elements, auth) {
+    const sessionId = state.room.sessionId;
+    let currentSession = null;
+    let currentRenderedIndex = null;
+    let currentQuestionToken = null;
+    let reviewingIndex = null;
+    let syncing = false;
+    let rendering = false;
+    let finished = false;
+    let phaseToken = 0;
+    let cancelClock = () => {};
+    let answerQueue = Promise.resolve();
+    let syncTimer = null;
+
+    function launchRoomCorrectConfetti() {
+      document.querySelectorAll(".correct-confetti").forEach((effect) => effect.remove());
+      const effect = document.createElement("div");
+      effect.className = "correct-confetti";
+      effect.setAttribute("aria-hidden", "true");
+      const colors = ["#fff176", "#ffd83d", "#ffc928", "#ffb817"];
+      ["left", "right"].forEach((side) => {
+        for (let index = 0; index < 18; index += 1) {
+          const piece = document.createElement("i");
+          const horizontal = 45 + Math.random() * 230;
+          const vertical = 150 + Math.random() * 310;
+          piece.className = `confetti-piece confetti-piece--${side}`;
+          piece.style.setProperty("--confetti-x", `${side === "left" ? horizontal : -horizontal}px`);
+          piece.style.setProperty("--confetti-apex-x", `${side === "left" ? horizontal * .7 : -horizontal * .7}px`);
+          piece.style.setProperty("--confetti-apex-y", `${-vertical}px`);
+          piece.style.setProperty("--confetti-end-y", `${-vertical * .48}px`);
+          piece.style.setProperty("--confetti-rotate", `${Math.round(220 + Math.random() * 620)}deg`);
+          piece.style.setProperty("--confetti-delay", `${(Math.random() * .22).toFixed(2)}s`);
+          piece.style.setProperty("--confetti-color", colors[index % colors.length]);
+          effect.append(piece);
+        }
+      });
+      document.body.append(effect);
+      globalThis.setTimeout(() => effect.remove(), 1900);
+    }
+
+    function answerEndTime(session) {
+      return session.questionStartedAt
+        ? Date.parse(session.questionStartedAt) + session.answerTimeSeconds * 1000
+        : Date.now();
+    }
+
+    function finishQuiz() {
+      if (finished) return;
+      finished = true;
+      phaseToken += 1;
+      cancelClock();
+      if (syncTimer !== null) globalThis.clearInterval(syncTimer);
+      state.quiz.index = quizConfig.questionCount;
+      state.metrics = computeMetrics(state.quiz.records);
+      state.outcome = null;
+      state.status = "rocket";
+      goTo("./rocket.html", state);
+    }
+
+    async function createAttemptIfNeeded() {
+      if (state.quiz.progressToken || state.quiz.index >= quizConfig.questionCount) return;
+      const attempt = await requestApi("/api/quiz/attempts", { method: "POST" });
+      state.quiz.index = 0;
+      state.quiz.answers = Array(quizConfig.questionCount).fill(null);
+      state.quiz.records = Array(quizConfig.questionCount).fill(null);
+      state.quiz.progressToken = attempt.progressToken;
+      state.metrics = null;
+      state.outcome = null;
+      persist(state);
+    }
+
+    async function gradeQuestion(index, questionToken, showFeedback) {
+      let result;
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        try {
+          result = await requestApi(`/api/quiz/questions/${index}/grade`, {
+            method: "POST",
+            body: JSON.stringify({
+              questionToken,
+              selectedOption: Number.isInteger(state.quiz.answers[index])
+                ? state.quiz.answers[index]
+                : null
+            })
+          });
+          break;
+        } catch (error) {
+          if (error.code !== "QUIZ_REVIEW_NOT_READY" || attempt === 11) throw error;
+          await new Promise((resolve) => globalThis.setTimeout(resolve, 100));
+        }
+      }
+
+      const selectedChoice = Number.isInteger(state.quiz.answers[index])
+        ? state.quiz.answers[index]
+        : null;
+      state.quiz.records[index] = {
+        selected: selectedChoice,
+        correct: result.correct,
+        category: result.category,
+        weight: result.weight
+      };
+      state.quiz.index = index + 1;
+      state.quiz.progressToken = result.nextProgressToken;
+      persist(state);
+
+      if (showFeedback) {
+        if (result.correct) launchRoomCorrectConfetti();
+        [...elements.answers.children].forEach((button, answerIndex) => {
+          button.disabled = true;
+          button.classList.toggle("is-answer", answerIndex === result.correctOption);
+          button.classList.toggle(
+            "is-selected",
+            answerIndex === selectedChoice && answerIndex !== result.correctOption
+          );
+          button.classList.toggle(
+            "is-muted",
+            answerIndex !== result.correctOption && answerIndex !== selectedChoice
+          );
+        });
+        elements.feedbackIcon.textContent = result.correct ? "✓" : "✦";
+        elements.feedbackTitle.textContent = result.correct ? "ナイスチャージ！" : "正解を確認！";
+        elements.feedbackText.textContent = selectedChoice === null
+          ? `今回は自動で答えを確認しました。${result.explanation}`
+          : `${result.explanation} 次の推進力にしよう。`;
+      }
+      return result;
+    }
+
+    async function catchUpTo(targetIndex) {
+      while (state.quiz.index < targetIndex) {
+        const index = state.quiz.index;
+        const start = await requestApi(
+          `/api/sessions/${encodeURIComponent(sessionId)}/quiz/questions/${index}/start`,
+          {
+            method: "POST",
+            headers: bearerHeaders(auth),
+            body: JSON.stringify({ progressToken: state.quiz.progressToken })
+          }
+        );
+        await gradeQuestion(index, start.questionToken, false);
+      }
+    }
+
+    async function showReview(index, token, session) {
+      if (
+        finished || token !== phaseToken || reviewingIndex === index ||
+        state.quiz.index !== index || !currentQuestionToken
+      ) return;
+      reviewingIndex = index;
+      cancelClock();
+      elements.card.dataset.mode = "review";
+      elements.timerLabel.textContent = "確認";
+      elements.reviewCount.hidden = false;
+      [...elements.answers.children].forEach((button) => button.disabled = true);
+
+      try {
+        await gradeQuestion(index, currentQuestionToken, true);
+      } catch (error) {
+        if (token !== phaseToken) return;
+        reviewingIndex = null;
+        elements.feedbackIcon.textContent = "!";
+        elements.feedbackTitle.textContent = "答え合わせに失敗しました";
+        elements.feedbackText.textContent = error.message;
+        return;
+      }
+      if (token !== phaseToken) return;
+
+      const nextQuestionAt = answerEndTime(session) + quizConfig.reviewTimeSeconds * 1000;
+      const remainingSeconds = Math.max(0.05, (nextQuestionAt - Date.now()) / 1000);
+      cancelClock = runClock(
+        remainingSeconds,
+        (shown, ratio) => {
+          elements.timerValue.textContent = String(shown);
+          elements.reviewCount.textContent = String(shown);
+          elements.timer.style.setProperty("--timer-progress", String(ratio));
+        },
+        () => void syncSession()
+      );
+    }
+
+    async function renderQuestion(session) {
+      const index = session.currentQuestionIndex;
+      if (
+        finished || rendering || index === null || currentRenderedIndex === index ||
+        state.quiz.index !== index
+      ) return;
+      rendering = true;
+      phaseToken += 1;
+      const token = phaseToken;
+      cancelClock();
+      reviewingIndex = null;
+      currentQuestionToken = null;
+      document.querySelectorAll(".correct-confetti").forEach((effect) => effect.remove());
+
+      elements.card.dataset.mode = "answer";
+      elements.feedbackIcon.textContent = "✦";
+      elements.feedbackTitle.textContent = "問題を読み込んでいます";
+      elements.feedbackText.textContent = "ルームの進行と同期しています。";
+      elements.answers.replaceChildren();
+
+      try {
+        const start = await requestApi(
+          `/api/sessions/${encodeURIComponent(sessionId)}/quiz/questions/${index}/start`,
+          {
+            method: "POST",
+            headers: bearerHeaders(auth),
+            body: JSON.stringify({ progressToken: state.quiz.progressToken })
+          }
+        );
+        if (token !== phaseToken) return;
+
+        const question = start.question;
+        const selectedChoice = Number.isInteger(state.quiz.answers[index])
+          ? state.quiz.answers[index]
+          : null;
+        currentRenderedIndex = index;
+        currentQuestionToken = start.questionToken;
+        elements.current.textContent = String(index + 1).padStart(2, "0");
+        elements.category.textContent = question.category;
+        elements.difficulty.textContent = difficultyLabel(question.weight);
+        elements.progress.style.width = `${((index + 1) / quizConfig.questionCount) * 100}%`;
+        elements.timerLabel.textContent = "回答";
+        elements.instruction.textContent = question.instruction;
+        elements.question.textContent = question.question;
+        elements.feedbackIcon.textContent = "✦";
+        elements.feedbackTitle.textContent = "仲間と同じ問題に挑戦中です";
+        elements.feedbackText.textContent = "選んだ答えはルームへ送信され、時間内なら変更できます。";
+        elements.reviewCount.hidden = true;
+
+        question.choices.forEach((choice, choiceIndex) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "answer-button";
+          button.dataset.choice = String(choiceIndex);
+          button.innerHTML = `<span>${String.fromCharCode(65 + choiceIndex)}</span><span></span>`;
+          button.lastElementChild.textContent = choice;
+          button.classList.toggle("is-selected", choiceIndex === selectedChoice);
+          button.setAttribute("aria-pressed", String(choiceIndex === selectedChoice));
+          button.addEventListener("click", () => {
+            state.quiz.answers[index] = choiceIndex;
+            persist(state);
+            [...elements.answers.children].forEach((answerButton, answerIndex) => {
+              const selected = answerIndex === choiceIndex;
+              answerButton.classList.toggle("is-selected", selected);
+              answerButton.setAttribute("aria-pressed", String(selected));
+            });
+
+            answerQueue = answerQueue.then(() => requestApi(
+              `/api/sessions/${encodeURIComponent(sessionId)}/answers/${index}`,
+              {
+                method: "PUT",
+                headers: bearerHeaders(auth),
+                body: JSON.stringify({ selectedOption: choiceIndex })
+              }
+            )).catch((error) => {
+              if (currentRenderedIndex !== index || reviewingIndex === index) return;
+              elements.feedbackIcon.textContent = "!";
+              elements.feedbackTitle.textContent = "回答を送信できませんでした";
+              elements.feedbackText.textContent = error.message;
+            });
+          });
+          elements.answers.append(button);
+        });
+
+        const remainingSeconds = Math.max(0.05, (answerEndTime(session) - Date.now()) / 1000);
+        cancelClock = runClock(
+          remainingSeconds,
+          (shown, ratio) => {
+            elements.timerValue.textContent = String(shown);
+            elements.timer.style.setProperty("--timer-progress", String(ratio));
+          },
+          () => void showReview(index, token, session)
+        );
+      } catch (error) {
+        if (token !== phaseToken) return;
+        elements.feedbackIcon.textContent = "!";
+        elements.feedbackTitle.textContent = "問題を読み込めませんでした";
+        elements.feedbackText.textContent = error.message;
+      } finally {
+        rendering = false;
+      }
+    }
+
+    async function syncSession() {
+      if (syncing || finished) return;
+      syncing = true;
+      try {
+        const session = await requestApi(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+          headers: bearerHeaders(auth)
+        });
+        currentSession = session;
+        if (session.questionCount !== quizConfig.questionCount) {
+          throw new Error("ルームとクイズの問題数が一致していません。ルームを作り直してください。");
+        }
+
+        if (session.status === "completed") {
+          await catchUpTo(session.questionCount);
+          finishQuiz();
+          return;
+        }
+        if (session.currentQuestionIndex === null) return;
+
+        await catchUpTo(session.currentQuestionIndex);
+        if (state.quiz.index === session.currentQuestionIndex) {
+          await renderQuestion(session);
+          if (
+            currentRenderedIndex === session.currentQuestionIndex &&
+            reviewingIndex !== session.currentQuestionIndex && Date.now() >= answerEndTime(session)
+          ) {
+            await showReview(session.currentQuestionIndex, phaseToken, session);
+          }
+        }
+      } catch (error) {
+        elements.feedbackIcon.textContent = "!";
+        elements.feedbackTitle.textContent = "ルームとの同期に失敗しました";
+        elements.feedbackText.textContent = error.message;
+      } finally {
+        syncing = false;
+      }
+    }
+
+    try {
+      await createAttemptIfNeeded();
+      currentSession = await requestApi(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+        headers: bearerHeaders(auth)
+      });
+      elements.total.textContent = String(currentSession.questionCount);
+      await syncSession();
+    } catch (error) {
+      elements.feedbackTitle.textContent = "ルームのクイズを開始できませんでした";
+      elements.feedbackText.textContent = error.message;
+      return;
+    }
+
+    if (!finished) {
+      connectRoomSocket(auth, (event) => {
+        if (
+          event.type === "question_started" || event.type === "question_ended" ||
+          event.type === "all_questions_done"
+        ) {
+          void syncSession();
+        }
+      });
+      syncTimer = globalThis.setInterval(() => void syncSession(), 2_000);
+    }
+  }
+
+  async function initQuiz() {
     if (!requirePlayer()) return;
 
     const elements = {
@@ -560,6 +1149,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
       avatar: document.querySelector("#quiz-player-avatar"),
       playerName: document.querySelector("#quiz-player-name"),
       current: document.querySelector("#question-current"),
+      total: document.querySelector("#question-total"),
       category: document.querySelector("#question-category"),
       difficulty: document.querySelector("#question-difficulty"),
       progress: document.querySelector("#quiz-progress"),
@@ -578,10 +1168,58 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     elements.avatar.style.setProperty("--crew-color", state.player.color);
     elements.playerName.textContent = state.player.name;
 
-    let questionIndex = Math.min(state.quiz.index, questionBank.length - 1);
+    try {
+      quizConfig = Object.freeze(await requestApi("/api/quiz/config"));
+      state = normalizeState(state);
+      elements.total.textContent = String(quizConfig.questionCount);
+    } catch (error) {
+      elements.feedbackTitle.textContent = "問題を読み込めませんでした";
+      elements.feedbackText.textContent = error.message;
+      return;
+    }
+
+    if (state.room.sessionId) {
+      const roomAuth = loadRoomAuth(state.room.code);
+      if (!roomAuth) {
+        elements.feedbackTitle.textContent = "ルームの参加情報がありません";
+        elements.feedbackText.textContent = "トップ画面から招待コードを入力して入り直してください。";
+        return;
+      }
+      await initMultiplayerQuiz(elements, roomAuth);
+      return;
+    }
+
+    if (state.quiz.index >= quizConfig.questionCount) {
+      if (!state.metrics) {
+        state.metrics = computeMetrics(state.quiz.records);
+        persist(state);
+      }
+      goTo("./rocket.html", state);
+      return;
+    }
+
+    if (!state.quiz.progressToken) {
+      try {
+        const attempt = await requestApi("/api/quiz/attempts", { method: "POST" });
+        state.quiz.index = 0;
+        state.quiz.answers = Array(quizConfig.questionCount).fill(null);
+        state.quiz.records = Array(quizConfig.questionCount).fill(null);
+        state.quiz.progressToken = attempt.progressToken;
+        state.metrics = null;
+        state.outcome = null;
+        persist(state);
+      } catch (error) {
+        elements.feedbackTitle.textContent = "クイズを開始できませんでした";
+        elements.feedbackText.textContent = error.message;
+        return;
+      }
+    }
+
+    let questionIndex = Math.min(state.quiz.index, quizConfig.questionCount - 1);
     let selectedChoice = Number.isInteger(state.quiz.answers[questionIndex])
       ? state.quiz.answers[questionIndex]
       : null;
+    let questionToken = null;
     let cancelClock = () => {};
     let phaseToken = 0;
 
@@ -608,50 +1246,71 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
         }
       });
       document.body.append(effect);
-      window.setTimeout(() => effect.remove(), 1900);
+      globalThis.setTimeout(() => effect.remove(), 1900);
     }
 
     function finishQuiz() {
       cancelClock();
-      state.quiz.index = questionBank.length;
+      state.quiz.index = quizConfig.questionCount;
       state.metrics = computeMetrics(state.quiz.records);
       state.outcome = null;
       state.status = "rocket";
       goTo("./rocket.html", state);
     }
 
-    function showReview(question, token) {
+    async function showReview(token) {
       if (token !== phaseToken) return;
       elements.card.dataset.mode = "review";
-      elements.timerLabel.textContent = "確認";
+      elements.timerLabel.textContent = "答え合わせ";
       elements.reviewCount.hidden = false;
 
-      const isCorrect = selectedChoice === question.answer;
+      [...elements.answers.children].forEach((button) => {
+        button.disabled = true;
+      });
+
+      let result;
+      try {
+        result = await requestApi(`/api/quiz/questions/${questionIndex}/grade`, {
+          method: "POST",
+          body: JSON.stringify({ questionToken, selectedOption: selectedChoice })
+        });
+      } catch (error) {
+        if (token !== phaseToken) return;
+        elements.feedbackIcon.textContent = "!";
+        elements.feedbackTitle.textContent = "答え合わせに失敗しました";
+        elements.feedbackText.textContent = error.message;
+        return;
+      }
+      if (token !== phaseToken) return;
+
+      const isCorrect = result.correct;
       if (isCorrect) launchCorrectConfetti();
       state.quiz.answers[questionIndex] = selectedChoice;
       state.quiz.records[questionIndex] = {
         selected: selectedChoice,
         correct: isCorrect,
-        category: question.category,
-        weight: question.weight
+        category: result.category,
+        weight: result.weight
       };
+      state.quiz.index = questionIndex + 1;
+      state.quiz.progressToken = result.nextProgressToken;
       persist(state);
 
       [...elements.answers.children].forEach((button, index) => {
         button.disabled = true;
-        button.classList.toggle("is-answer", index === question.answer);
-        button.classList.toggle("is-selected", index === selectedChoice && index !== question.answer);
-        button.classList.toggle("is-muted", index !== question.answer && index !== selectedChoice);
+        button.classList.toggle("is-answer", index === result.correctOption);
+        button.classList.toggle("is-selected", index === selectedChoice && index !== result.correctOption);
+        button.classList.toggle("is-muted", index !== result.correctOption && index !== selectedChoice);
       });
 
       elements.feedbackIcon.textContent = isCorrect ? "✓" : "✦";
       elements.feedbackTitle.textContent = isCorrect ? "ナイスチャージ！" : "正解を確認！";
       elements.feedbackText.textContent = selectedChoice === null
-        ? `今回は自動で答えを確認しました。${question.explanation}`
-        : `${question.explanation} 次の推進力にしよう。`;
+        ? `今回は自動で答えを確認しました。${result.explanation}`
+        : `${result.explanation} 次の推進力にしよう。`;
 
       cancelClock = runClock(
-        REVIEW_SECONDS,
+        quizConfig.reviewTimeSeconds,
         (shown, ratio) => {
           elements.timerValue.textContent = String(shown);
           elements.reviewCount.textContent = String(shown);
@@ -659,40 +1318,59 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
         },
         () => {
           if (token !== phaseToken) return;
-          if (questionIndex >= questionBank.length - 1) {
+          if (state.quiz.index >= quizConfig.questionCount) {
             finishQuiz();
             return;
           }
-          questionIndex += 1;
-          state.quiz.index = questionIndex;
+          questionIndex = state.quiz.index;
           selectedChoice = Number.isInteger(state.quiz.answers[questionIndex])
             ? state.quiz.answers[questionIndex]
             : null;
-          persist(state);
-          renderQuestion();
+          void renderQuestion();
         }
       );
     }
 
-    function renderQuestion() {
+    async function renderQuestion() {
       document.querySelectorAll(".correct-confetti").forEach((effect) => effect.remove());
       phaseToken += 1;
       const token = phaseToken;
       cancelClock();
 
-      const question = questionBank[questionIndex];
       elements.card.dataset.mode = "answer";
+      elements.feedbackIcon.textContent = "✦";
+      elements.feedbackTitle.textContent = "問題を読み込んでいます";
+      elements.feedbackText.textContent = "少し待ってください。";
+      elements.answers.replaceChildren();
+
+      let start;
+      try {
+        start = await requestApi(`/api/quiz/questions/${questionIndex}/start`, {
+          method: "POST",
+          body: JSON.stringify({ progressToken: state.quiz.progressToken })
+        });
+      } catch (error) {
+        if (token !== phaseToken) return;
+        elements.feedbackIcon.textContent = "!";
+        elements.feedbackTitle.textContent = "問題を読み込めませんでした";
+        elements.feedbackText.textContent = error.message;
+        return;
+      }
+      if (token !== phaseToken) return;
+
+      const question = start.question;
+      questionToken = start.questionToken;
       elements.current.textContent = String(questionIndex + 1).padStart(2, "0");
       elements.category.textContent = question.category;
       elements.difficulty.textContent = difficultyLabel(question.weight);
-      elements.progress.style.width = `${((questionIndex + 1) / questionBank.length) * 100}%`;
+      elements.progress.style.width = `${((questionIndex + 1) / quizConfig.questionCount) * 100}%`;
       elements.timerLabel.textContent = "回答";
-      elements.timerValue.textContent = String(ANSWER_SECONDS);
+      elements.timerValue.textContent = String(start.answerTimeSeconds);
       elements.timer.style.setProperty("--timer-progress", "1");
       elements.instruction.textContent = question.instruction;
       elements.question.textContent = question.question;
       elements.feedbackIcon.textContent = "✦";
-      elements.feedbackTitle.textContent = "10秒間は何度でも回答を変更できます";
+      elements.feedbackTitle.textContent = `${start.answerTimeSeconds}秒間は何度でも回答を変更できます`;
       elements.feedbackText.textContent = "選んだ答えはオレンジ色で表示されます。";
       elements.reviewCount.hidden = true;
       elements.answers.replaceChildren();
@@ -720,16 +1398,16 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
       });
 
       cancelClock = runClock(
-        ANSWER_SECONDS,
+        start.answerTimeSeconds,
         (shown, ratio) => {
           elements.timerValue.textContent = String(shown);
           elements.timer.style.setProperty("--timer-progress", String(ratio));
         },
-        () => showReview(question, token)
+        () => void showReview(token)
       );
     }
 
-    renderQuestion();
+    void renderQuestion();
   }
 
   function getFlightRank(altitude) {
@@ -763,10 +1441,6 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     };
   }
 
-  function delay(milliseconds) {
-    return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
-  }
-
   function initRocket() {
     if (!requireMetrics()) return;
     const elements = {
@@ -779,13 +1453,13 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     };
     const outcome = calculateOutcome(state.metrics);
     const rank = getFlightRank(outcome.altitude);
-    const resultContent = window.ROCKET_LAUNCH_RESULTS || {};
+    const resultContent = globalThis.ROCKET_LAUNCH_RESULTS || {};
     const botColors = ["oklch(0.62 0.20 24)", "oklch(0.62 0.17 253)", "oklch(0.83 0.16 93)", state.player.color];
     const botSpots = [{ left: "28%", top: "78%" }, { left: "38%", top: "84%" }, { left: "60%", top: "84%" }, { left: "71%", top: "77%" }];
     const captions = { ground: "発射準備", sky: "上空へ", "atmosphere-edge": "大気圏付近", space: "宇宙空間", sea: "着水" };
     let running = false;
 
-    const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+    const wait = (milliseconds) => new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
     const showScreen = (target) => [elements.setup, elements.launch, elements.result].forEach((screen) => {
       const active = screen === target;
       screen.classList.toggle("is-active", active);
@@ -881,9 +1555,9 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
       const progress = clamp((now - startedAt) / duration, 0, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
       element.textContent = Math.round(target * eased).toLocaleString("ja-JP");
-      if (progress < 1) window.requestAnimationFrame(frame);
+      if (progress < 1) globalThis.requestAnimationFrame(frame);
     }
-    window.requestAnimationFrame(frame);
+    globalThis.requestAnimationFrame(frame);
   }
 
   function addResultSparkles(container) {
@@ -979,6 +1653,40 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     addResultSparkles(document.querySelector("#result-sparkles"));
     renderRadar(document.querySelector("#result-radar"));
 
+    const auth = state.room.sessionId ? loadRoomAuth(state.room.code) : null;
+    const crewResults = document.querySelector("#crew-results");
+    const crewResultsStatus = document.querySelector("#crew-results-status");
+    const crewResultsList = document.querySelector("#crew-results-list");
+    if (auth && crewResults && crewResultsStatus && crewResultsList) {
+      crewResults.hidden = false;
+      void requestApi(
+        `/api/sessions/${encodeURIComponent(state.room.sessionId)}/results`,
+        { headers: bearerHeaders(auth) }
+      ).then((results) => {
+        crewResultsList.replaceChildren();
+        results.participants.forEach((participant) => {
+          const item = document.createElement("li");
+          if (participant.participantId === auth.participantId) item.classList.add("is-you");
+
+          const name = document.createElement("span");
+          name.className = "crew-results-name";
+          name.textContent = participant.displayName;
+          const detail = document.createElement("span");
+          detail.className = "crew-results-detail";
+          detail.textContent = `${participant.correctCount}/${results.questionCount}問正解`;
+          const score = document.createElement("strong");
+          score.className = "crew-results-score";
+          score.textContent = `${participant.power}%`;
+          item.append(name, detail, score);
+          crewResultsList.append(item);
+        });
+        crewResultsStatus.hidden = results.participants.length > 0;
+        if (!results.participants.length) crewResultsStatus.textContent = "共有結果はありません。";
+      }).catch((error) => {
+        crewResultsStatus.textContent = `共有結果を読み込めませんでした。${error.message}`;
+      });
+    }
+
     const cardLink = document.querySelector("#card-link");
     setStateLink(cardLink, "./card.html", state);
     cardLink.addEventListener("click", (event) => {
@@ -1065,7 +1773,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     context.lineJoin = "round";
     [25, 50, 75, 100].forEach((level) => {
       context.beginPath();
-      entries.forEach((entry, index) => {
+      entries.forEach((_entry, index) => {
         const [x, y] = radarPoint(index, level, centerX, centerY, radius);
         if (index === 0) context.moveTo(x, y);
         else context.lineTo(x, y);
@@ -1075,7 +1783,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
       context.lineWidth = level === 100 ? 2 : 1;
       context.stroke();
     });
-    entries.forEach((entry, index) => {
+    entries.forEach((_entry, index) => {
       const [x, y] = radarPoint(index, 100, centerX, centerY, radius);
       context.beginPath();
       context.moveTo(centerX, centerY);
@@ -1262,7 +1970,7 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
         link.click();
         link.remove();
         saveLabel.textContent = "保存しました！";
-        window.setTimeout(() => {
+        globalThis.setTimeout(() => {
           saveButton.disabled = false;
           saveLabel.textContent = "PNGで保存";
           if (url.startsWith("blob:")) URL.revokeObjectURL(url);
@@ -1280,8 +1988,8 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     });
   }
 
-  window.EngiFar = Object.freeze({
-    questionCount: questionBank.length,
+  globalThis.EngiFar = Object.freeze({
+    get questionCount() { return quizConfig.questionCount; },
     thresholds: Object.freeze({ output: OUTPUT_THRESHOLD, safety: SAFETY_THRESHOLD }),
     calculateOutcome,
     computeMetrics,
@@ -1289,12 +1997,16 @@ document.querySelector("#welcomeMessage").innerText = await message.text()
     ranks: FLIGHT_RANKS
   });
 
+  if (["rocket", "result", "card"].includes(page) && state.room.sessionId) {
+    const roomAuth = loadRoomAuth(state.room.code);
+    if (roomAuth) connectRoomSocket(roomAuth);
+  }
+
   if (page === "home") initHome();
   else if (page === "room") initRoom();
-  else if (page === "quiz") initQuiz();
+  else if (page === "quiz") void initQuiz();
   else if (page === "rocket") initRocket();
   else if (page === "result") initResult();
   else if (page === "card") initCard();
   if (page === "home" || page === "room") initGuide();
 })();
->>>>>>> Stashed changes

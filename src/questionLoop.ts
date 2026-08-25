@@ -55,6 +55,7 @@ export function scheduleQuestionAdvance(
         sessionId: advanced.id,
         questionIndex: advanced.currentQuestionIndex,
         timeLimitSeconds: advanced.answerTimeSeconds,
+        questionStartedAt: advanced.questionStartedAt,
       });
 
       scheduleQuestionAdvance(repository, advanced, reviewTimeMs);

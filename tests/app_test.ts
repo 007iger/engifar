@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createApp } from "../src/app.ts";
 import { ApiError } from "../src/errors.ts";
+import { createQuizService } from "../src/quiz.ts";
 import type {
   AnswerSummary,
   AuthenticatedParticipant,
@@ -10,6 +11,7 @@ import type {
   MembershipResult,
   RoomDetail,
   RoomSummary,
+  SessionResultSource,
 } from "../src/types.ts";
 
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
@@ -50,6 +52,9 @@ class FakeRepository implements GameRepository {
   createdDisplayName: string | null = null;
   joinedRoomCode: string | null = null;
   submittedOption: number | null = null;
+  startedQuestionCount: number | null = null;
+  startedAnswerTimeSeconds: number | null = null;
+  sessionToStart: GameSessionSummary = session;
 
   healthCheck(): Promise<void> {
     return Promise.resolve();
@@ -66,7 +71,11 @@ class FakeRepository implements GameRepository {
   }
 
   getRoom(_code: string): Promise<RoomDetail> {
-    return Promise.resolve({ ...membership.room, participants: [membership.participant] });
+    return Promise.resolve({
+      ...membership.room,
+      participants: [membership.participant],
+      activeSession: null,
+    });
   }
 
   authenticateParticipant(
@@ -89,8 +98,46 @@ class FakeRepository implements GameRepository {
     return Promise.resolve({ ...membership.room, genre });
   }
 
-  startSession(_code: string, _accessToken: string): Promise<GameSessionSummary> {
+  startSession(
+    _code: string,
+    _accessToken: string,
+    questionCount: number,
+    answerTimeSeconds: number,
+  ): Promise<GameSessionSummary> {
+    this.startedQuestionCount = questionCount;
+    this.startedAnswerTimeSeconds = answerTimeSeconds;
+    return Promise.resolve(this.sessionToStart);
+  }
+
+  getSessionForParticipant(
+    _sessionId: string,
+    accessToken: string,
+  ): Promise<GameSessionSummary> {
+    if (accessToken !== TOKEN) {
+      throw new ApiError(403, "PARTICIPANT_REQUIRED", "A valid participant token is required");
+    }
     return Promise.resolve(session);
+  }
+
+  getSessionResultSource(
+    _sessionId: string,
+    accessToken: string,
+  ): Promise<SessionResultSource> {
+    if (accessToken !== TOKEN) {
+      throw new ApiError(403, "PARTICIPANT_REQUIRED", "A valid participant token is required");
+    }
+    return Promise.resolve({
+      session: { ...session, status: "completed", finishedAt: NOW },
+      participants: [{
+        participantId: membership.participant.id,
+        displayName: membership.participant.displayName,
+        role: membership.participant.role,
+        answers: [
+          { questionIndex: 0, selectedOption: 0, responseTimeMs: 500 },
+          { questionIndex: 1, selectedOption: 3, responseTimeMs: 700 },
+        ],
+      }],
+    });
   }
 
   startQuestion(
@@ -245,6 +292,92 @@ Deno.test("starting a session requires a bearer token", async () => {
   assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED");
 });
 
+Deno.test("starting a room uses the quiz question count and answer time", async () => {
+  const repository = new FakeRepository();
+  repository.sessionToStart = { ...session, currentQuestionIndex: null, questionStartedAt: null };
+  const quizService = createQuizService({
+    secret: "room-config-test-secret-that-is-at-least-32-bytes",
+    answerTimeSeconds: 7,
+  });
+  const response = await createApp(repository, { quizService })(
+    new Request("http://localhost/api/rooms/ABC234/sessions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+
+  assert.equal(response.status, 201);
+  assert.equal(repository.startedQuestionCount, quizService.config.questionCount);
+  assert.equal(repository.startedAnswerTimeSeconds, 7);
+});
+
+Deno.test("a participant can retrieve the shared room session", async () => {
+  const response = await createApp(new FakeRepository())(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.id, SESSION_ID);
+});
+
+Deno.test("participants can retrieve ranked shared results", async () => {
+  const response = await createApp(new FakeRepository())(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const results = (await response.json()).data;
+
+  assert.equal(response.status, 200);
+  assert.equal(results.sessionId, SESSION_ID);
+  assert.equal(results.participants[0].displayName, membership.participant.displayName);
+  assert.equal(results.participants[0].answeredCount, 2);
+  assert.equal(results.participants[0].correctCount, 2);
+  assert.equal(results.participants[0].averageResponseTimeMs, 600);
+});
+
+Deno.test("room quiz reveal time follows the shared session clock", async () => {
+  let now = Date.parse(NOW);
+  const quizService = createQuizService({
+    secret: "room-clock-test-secret-that-is-at-least-32-bytes",
+    now: () => now,
+  });
+  const app = createApp(new FakeRepository(), { quizService });
+  const attemptResponse = await app(
+    new Request("http://localhost/api/quiz/attempts", { method: "POST" }),
+  );
+  const { progressToken } = (await attemptResponse.json()).data;
+  const startResponse = await app(
+    jsonRequest(
+      `/api/sessions/${SESSION_ID}/quiz/questions/0/start`,
+      "POST",
+      { progressToken },
+      TOKEN,
+    ),
+  );
+  const start = (await startResponse.json()).data;
+
+  now += 10_000;
+  const earlyGrade = await app(
+    jsonRequest("/api/quiz/questions/0/grade", "POST", {
+      questionToken: start.questionToken,
+      selectedOption: 0,
+    }),
+  );
+  assert.equal(earlyGrade.status, 409);
+
+  now += 5_000;
+  const grade = await app(
+    jsonRequest("/api/quiz/questions/0/grade", "POST", {
+      questionToken: start.questionToken,
+      selectedOption: 0,
+    }),
+  );
+  assert.equal(grade.status, 200);
+});
+
 Deno.test("answer option must be one of four zero-based indexes", async () => {
   const response = await createApp(new FakeRepository())(
     jsonRequest(
@@ -288,4 +421,53 @@ Deno.test("全員回答済みでも解答APIは正常にレスポンスを返す
   );
 
   assert.equal(response.status, 200);
+});
+
+Deno.test("quiz API keeps the answer out of question responses", async () => {
+  let now = 1_000;
+  const quizService = createQuizService({
+    secret: "app-test-secret-that-is-at-least-32-bytes",
+    now: () => now,
+  });
+  const app = createApp(new FakeRepository(), { quizService });
+
+  const configResponse = await app(new Request("http://localhost/api/quiz/config"));
+  assert.equal(configResponse.status, 200);
+  assert.equal((await configResponse.json()).data.questionCount, 24);
+
+  const attemptResponse = await app(
+    new Request("http://localhost/api/quiz/attempts", { method: "POST" }),
+  );
+  assert.equal(attemptResponse.status, 201);
+  const { progressToken } = (await attemptResponse.json()).data;
+
+  const startResponse = await app(
+    jsonRequest("/api/quiz/questions/0/start", "POST", { progressToken }),
+  );
+  assert.equal(startResponse.status, 200);
+  const start = (await startResponse.json()).data;
+  assert.equal(Object.hasOwn(start.question, "answer"), false);
+  assert.equal(Object.hasOwn(start.question, "explanation"), false);
+
+  const earlyGrade = await app(
+    jsonRequest("/api/quiz/questions/0/grade", "POST", {
+      questionToken: start.questionToken,
+      selectedOption: 0,
+    }),
+  );
+  assert.equal(earlyGrade.status, 409);
+  assert.equal((await earlyGrade.json()).error.code, "QUIZ_REVIEW_NOT_READY");
+
+  now += 10_000;
+  const gradeResponse = await app(
+    jsonRequest("/api/quiz/questions/0/grade", "POST", {
+      questionToken: start.questionToken,
+      selectedOption: 0,
+    }),
+  );
+  assert.equal(gradeResponse.status, 200);
+  const grade = (await gradeResponse.json()).data;
+  assert.equal(grade.correct, true);
+  assert.equal(grade.correctOption, 0);
+  assert.equal(typeof grade.explanation, "string");
 });

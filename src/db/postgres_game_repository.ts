@@ -12,14 +12,13 @@ import type {
   RoomDetail,
   RoomStatus,
   RoomSummary,
+  SessionResultSource,
   SessionStatus,
 } from "../types.ts";
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ROOM_CODE_LENGTH = 6;
 const ROOM_CODE_ATTEMPTS = 5;
-const DEMO_QUESTION_COUNT = 12;
-const DEMO_ANSWER_TIME_SECONDS = 15;
 
 interface RoomRow extends QueryResultRow {
   id: string;
@@ -57,6 +56,15 @@ interface AnswerRow extends QueryResultRow {
   selected_option: number;
   response_time_ms: number;
   answered_at: Date | string;
+}
+
+interface SessionResultRow extends QueryResultRow {
+  participant_id: string;
+  display_name_snapshot: string;
+  role_snapshot: ParticipantRole;
+  question_index: number | null;
+  selected_option: number | null;
+  response_time_ms: number | null;
 }
 
 interface TimedSessionRow extends SessionRow {
@@ -254,7 +262,22 @@ export class PostgresGameRepository implements GameRepository {
       [room.id],
     );
 
-    return { ...mapRoom(room), participants: participants.rows.map(mapParticipant) };
+    const sessionResult = await this.pool.query<SessionRow>(
+      `SELECT id, room_id, session_number, status, question_count,
+         answer_time_seconds, current_question_index, question_started_at,
+         started_at, finished_at
+       FROM game_session
+       WHERE room_id = $1
+       ORDER BY session_number DESC
+       LIMIT 1`,
+      [room.id],
+    );
+
+    return {
+      ...mapRoom(room),
+      participants: participants.rows.map(mapParticipant),
+      activeSession: sessionResult.rows[0] ? mapSession(sessionResult.rows[0]) : null,
+    };
   }
 
   async authenticateParticipant(
@@ -316,7 +339,12 @@ export class PostgresGameRepository implements GameRepository {
     return mapRoom(room);
   }
 
-  async startSession(code: string, accessToken: string): Promise<GameSessionSummary> {
+  async startSession(
+    code: string,
+    accessToken: string,
+    questionCount: number,
+    answerTimeSeconds: number,
+  ): Promise<GameSessionSummary> {
     const client = await this.pool.connect();
     const tokenHash = await hashAccessToken(accessToken);
 
@@ -356,7 +384,7 @@ export class PostgresGameRepository implements GameRepository {
          RETURNING id, room_id, session_number, status, question_count,
            answer_time_seconds, current_question_index, question_started_at,
            started_at, finished_at`,
-        [room.id, DEMO_QUESTION_COUNT, DEMO_ANSWER_TIME_SECONDS],
+        [room.id, questionCount, answerTimeSeconds],
       );
       const session = sessionResult.rows[0];
 
@@ -385,6 +413,89 @@ export class PostgresGameRepository implements GameRepository {
     } finally {
       client.release();
     }
+  }
+
+  async getSessionForParticipant(
+    sessionId: string,
+    accessToken: string,
+  ): Promise<GameSessionSummary> {
+    const tokenHash = await hashAccessToken(accessToken);
+    const result = await this.pool.query<SessionRow>(
+      `SELECT gs.id, gs.room_id, gs.session_number, gs.status, gs.question_count,
+         gs.answer_time_seconds, gs.current_question_index, gs.question_started_at,
+         gs.started_at, gs.finished_at
+       FROM game_session gs
+       JOIN session_participant sp ON sp.game_session_id = gs.id
+       JOIN participant p ON p.id = sp.participant_id
+       WHERE gs.id = $1
+         AND p.access_token_hash = $2
+         AND p.left_at IS NULL`,
+      [sessionId, tokenHash],
+    );
+    const session = result.rows[0];
+    if (!session) {
+      throw new ApiError(403, "PARTICIPANT_REQUIRED", "A valid participant token is required");
+    }
+    return mapSession(session);
+  }
+
+  async getSessionResultSource(
+    sessionId: string,
+    accessToken: string,
+  ): Promise<SessionResultSource> {
+    const tokenHash = await hashAccessToken(accessToken);
+    const sessionResult = await this.pool.query<SessionRow>(
+      `SELECT gs.id, gs.room_id, gs.session_number, gs.status, gs.question_count,
+         gs.answer_time_seconds, gs.current_question_index, gs.question_started_at,
+         gs.started_at, gs.finished_at
+       FROM game_session gs
+       JOIN session_participant requester ON requester.game_session_id = gs.id
+       JOIN participant p ON p.id = requester.participant_id
+       WHERE gs.id = $1 AND p.access_token_hash = $2`,
+      [sessionId, tokenHash],
+    );
+    const session = sessionResult.rows[0];
+    if (!session) {
+      throw new ApiError(403, "PARTICIPANT_REQUIRED", "A valid participant token is required");
+    }
+    if (session.status !== "completed") {
+      throw new ApiError(409, "RESULTS_NOT_READY", "Results are available after the quiz ends");
+    }
+
+    const result = await this.pool.query<SessionResultRow>(
+      `SELECT sp.participant_id, sp.display_name_snapshot, sp.role_snapshot,
+         a.question_index, a.selected_option, a.response_time_ms
+       FROM session_participant sp
+       LEFT JOIN answer a
+         ON a.game_session_id = sp.game_session_id
+        AND a.participant_id = sp.participant_id
+       WHERE sp.game_session_id = $1
+       ORDER BY sp.joined_at, sp.participant_id, a.question_index`,
+      [sessionId],
+    );
+
+    const participants = new Map<string, SessionResultSource["participants"][number]>();
+    for (const row of result.rows) {
+      let participant = participants.get(row.participant_id);
+      if (!participant) {
+        participant = {
+          participantId: row.participant_id,
+          displayName: row.display_name_snapshot,
+          role: row.role_snapshot,
+          answers: [],
+        };
+        participants.set(row.participant_id, participant);
+      }
+      if (row.question_index !== null && row.selected_option !== null) {
+        participant.answers.push({
+          questionIndex: row.question_index,
+          selectedOption: row.selected_option,
+          responseTimeMs: row.response_time_ms ?? 0,
+        });
+      }
+    }
+
+    return { session: mapSession(session), participants: [...participants.values()] };
   }
 
   async startQuestion(

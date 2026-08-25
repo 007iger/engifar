@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-=======
 :root {
   color-scheme: dark;
   --night: #050a16;
@@ -24,24 +22,15 @@
   font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
   font-synthesis: none;
 }
-
->>>>>>> Stashed changes
 * {
   box-sizing: border-box;
   margin: 0;
-<<<<<<< Updated upstream
 }
 
-html, body {
-  height: 100vh;
-  width: 100%;
-}
-
+html,
 body {
-  display: grid;
-  place-content: center;
-}
-=======
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background: var(--night);
 }
@@ -818,12 +807,10 @@ a {
 
 .question-zone {
   display: grid;
-  grid-template-columns: 94px minmax(0, 1fr);
-  align-items: center;
-  gap: clamp(12px, 2.5vw, 26px);
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
-  padding: clamp(9px, 1.8vh, 16px);
+  overflow: hidden;
   border: 1px solid rgba(120, 161, 187, .17);
   border-radius: 18px;
   background: rgba(4, 13, 25, .55);
@@ -832,28 +819,46 @@ a {
 .timer-dial {
   --timer-color: var(--orange);
   position: relative;
-  display: grid;
-  place-content: center;
-  width: 82px;
-  height: 82px;
-  border-radius: 50%;
-  text-align: center;
-  background:
-    radial-gradient(circle at center, #0b1a2d 0 57%, transparent 59%),
-    conic-gradient(var(--timer-color) calc(var(--timer-progress) * 1turn), rgba(120, 145, 163, .15) 0);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 0 22px rgba(255,117,65,.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 20px 12px;
+  border-bottom: 1px solid rgba(120, 161, 187, .14);
+  background: rgba(15, 31, 49, .62);
 }
 
-.timer-dial span,
-.timer-dial small {
+.timer-dial::after {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: calc(var(--timer-progress) * 100%);
+  height: 4px;
+  content: "";
+  background: var(--timer-color);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--timer-color) 55%, transparent);
+  transition: width .16s linear;
+}
+
+.timer-dial span {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.timer-dial small {
+  margin-left: 5px;
+  color: var(--timer-color);
+  font-size: 12px;
   font-weight: 900;
 }
 
 .timer-dial strong {
+  color: var(--timer-color);
   font-family: "Arial Black", "Segoe UI", sans-serif;
-  font-size: 27px;
+  font-size: 30px;
   line-height: .95;
 }
 
@@ -862,11 +867,29 @@ a {
 }
 
 .question-copy {
+  display: grid;
+  align-content: start;
+  gap: clamp(11px, 1.8vh, 18px);
+  min-width: 0;
+  padding: clamp(14px, 2.4vh, 24px) clamp(15px, 2.5vw, 26px) clamp(16px, 2.6vh, 26px);
+}
+
+.question-prompt,
+.question-fill {
   min-width: 0;
 }
 
+.question-row-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--cyan);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .15em;
+}
+
 .question-instruction {
-  margin: 0 0 clamp(7px, 1.4vh, 13px);
+  margin: 0;
   color: var(--text);
   font-size: clamp(12px, 1.45vw, 15px);
   font-weight: 800;
@@ -876,8 +899,14 @@ a {
 .question-copy pre {
   overflow: hidden;
   margin: 0;
+  min-height: 64px;
+  padding: 14px 16px;
+  border: 1px solid rgba(201, 247, 101, .28);
+  border-radius: 13px;
   color: var(--lime);
+  background: rgba(13, 28, 18, .72);
   font: 800 clamp(13px, 1.7vw, 18px)/1.5 ui-monospace, "Cascadia Code", "Yu Gothic UI", monospace;
+  text-align: center;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -2086,28 +2115,42 @@ a {
   }
 
   .question-zone {
-    grid-template-columns: 66px minmax(0, 1fr);
-    gap: 10px;
-    padding: 8px;
     border-radius: 13px;
   }
 
   .timer-dial {
-    width: 58px;
-    height: 58px;
+    min-height: 45px;
+    padding: 7px 11px 8px;
   }
 
   .timer-dial strong {
-    font-size: 21px;
+    font-size: 23px;
+  }
+
+  .timer-dial span,
+  .timer-dial small {
+    font-size: 9px;
+  }
+
+  .question-copy {
+    gap: 8px;
+    padding: 9px 10px 11px;
+  }
+
+  .question-row-label {
+    margin-bottom: 3px;
+    font-size: 7px;
   }
 
   .question-instruction {
-    margin-bottom: 5px;
     font-size: clamp(10px, 3vw, 12px);
     line-height: 1.4;
   }
 
   .question-copy pre {
+    min-height: 46px;
+    padding: 8px 9px;
+    border-radius: 9px;
     font-size: clamp(10.5px, 3.2vw, 14px);
     line-height: 1.4;
   }
@@ -2648,9 +2691,38 @@ a {
   .question-zone {
     grid-column: 1;
     grid-row: 3;
-    grid-template-columns: 58px minmax(0, 1fr);
     min-height: 0;
-    padding: 6px;
+  }
+
+  .timer-dial {
+    min-height: 37px;
+    padding: 5px 9px 6px;
+  }
+
+  .timer-dial strong {
+    font-size: 19px;
+  }
+
+  .question-copy {
+    gap: 5px;
+    padding: 6px 8px 7px;
+  }
+
+  .question-row-label {
+    margin-bottom: 2px;
+    font-size: 6px;
+  }
+
+  .question-instruction {
+    font-size: 10px;
+    line-height: 1.3;
+  }
+
+  .question-copy pre {
+    min-height: 36px;
+    padding: 5px 7px;
+    font-size: 10px;
+    line-height: 1.25;
   }
 
   .answer-grid {
@@ -2915,6 +2987,8 @@ a {
 .room-entry-panel { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line); }
 .room-entry-panel > div { display: grid; grid-template-columns: 1fr auto; gap: 7px; }
 .room-entry-panel button { min-width: 72px; border-radius: 10px; color: #07111f; background: var(--lime); font-weight: 900; cursor: pointer; }
+.home-room-status { min-height: 16px; margin-top: 6px; color: var(--cyan); font-size: 10px; font-weight: 800; text-align: center; }
+.home-room-status[data-kind="error"] { color: #ff9a83; }
 .home-room-note { margin: 8px 0 0; color: var(--quiet); font-size: 9px; font-weight: 700; text-align: center; }
 
 @media (min-width:900px) and (min-height:700px) {
@@ -2957,8 +3031,10 @@ a {
 .room-bot--player b { position:absolute; left:50%; top:105%; padding:2px 5px; border-radius:4px; color:#07111f; background:var(--lime); font-size:7px; transform:translateX(-50%); }
 .room-lobby-panel { padding: clamp(18px,3vw,30px); border: 1px solid var(--line-strong); border-radius: 24px; background: rgba(9,23,40,.9); }
 .room-lobby-panel h1 { margin: 6px 0 18px; font-size: clamp(26px,3vw,40px); line-height:1.1; }
+.room-player-list { display:grid; gap:8px; max-height:230px; overflow:auto; padding-right:3px; }
 .room-player-card { display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--line); border-radius:15px; background:rgba(4,13,25,.62); }
-.room-player-card div { min-width:0; flex:1; }.room-player-card small,.room-player-card strong{display:block}.room-player-card small{color:var(--cyan);font-size:8px;font-weight:900}.room-player-card strong{overflow:hidden;margin-top:3px;text-overflow:ellipsis;white-space:nowrap}.ready-badge{padding:5px 8px;border-radius:99px;color:#07111f;background:var(--lime);font-size:9px;font-weight:900}.room-future-note{margin:14px 0;color:var(--muted);font-size:10px;font-weight:700;line-height:1.6}.room-lobby-panel .primary-button{width:100%}
+.room-player-card.is-you { border-color:var(--line-strong); background:rgba(98,228,236,.08); }
+.room-player-card div { min-width:0; flex:1; }.room-player-card small,.room-player-card strong{display:block}.room-player-card small{color:var(--cyan);font-size:8px;font-weight:900}.room-player-card strong{overflow:hidden;margin-top:3px;text-overflow:ellipsis;white-space:nowrap}.ready-badge{padding:5px 8px;border-radius:99px;color:#07111f;background:var(--lime);font-size:9px;font-weight:900}.room-future-note{margin:14px 0 5px;color:var(--muted);font-size:10px;font-weight:700;line-height:1.6}.room-lobby-status{min-height:17px;margin:0 0 8px;color:var(--cyan);font-size:9px;font-weight:800}.room-lobby-status[data-kind="error"]{color:#ff9a83}.room-lobby-panel .primary-button{width:100%}
 
 /* Flight phases and rank reveal */
 .sky-layer--edge { background: linear-gradient(180deg,#040917,#142d57 58%,#66a5bd 100%); }
@@ -3003,6 +3079,18 @@ a {
 .result-data-grid .result-metrics > div { padding:9px 11px; }
 .result-data-grid .result-metrics dd b { font-size:clamp(24px,3vw,34px); }
 .result-data-grid .metric-altitude dd b { font-size:clamp(18px,2.7vw,30px); letter-spacing:-.05em; }
+.crew-results { margin:-3px 0 9px; padding:8px 10px; border:1px solid rgba(201,247,101,.25); border-radius:12px; background:rgba(4,13,25,.58); }
+.crew-results header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.crew-results header span { color:var(--lime); font-size:8px; font-weight:900; letter-spacing:.12em; }
+.crew-results header strong { font-size:11px; }
+.crew-results > p { margin:5px 0 0; color:var(--muted); font-size:9px; }
+.crew-results ol { display:grid; gap:4px; max-height:86px; margin-top:6px; padding:0; overflow:auto; list-style:none; counter-reset:crew-rank; }
+.crew-results li { counter-increment:crew-rank; display:grid; grid-template-columns:22px minmax(0,1fr) auto auto; align-items:center; gap:6px; padding:5px 7px; border-radius:8px; background:rgba(98,228,236,.06); font-size:9px; }
+.crew-results li::before { content:counter(crew-rank); color:var(--cyan); font-weight:900; text-align:center; }
+.crew-results li.is-you { outline:1px solid rgba(201,247,101,.38); background:rgba(201,247,101,.08); }
+.crew-results-name { overflow:hidden; font-weight:900; text-overflow:ellipsis; white-space:nowrap; }
+.crew-results-detail { color:var(--muted); white-space:nowrap; }
+.crew-results-score { color:var(--lime); font-size:12px; font-weight:900; white-space:nowrap; }
 .card-mini-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .card-mini-metrics .card-rank-metric { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; border-color:rgba(201,247,101,.28); }
 .card-mini-metrics .card-distance-metric { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; gap:10px; }
@@ -3027,6 +3115,7 @@ a {
   .result-panel h1{font-size:clamp(22px,7vw,30px)}
   .result-avatar .crew-avatar{--crew-size:32px}
   .result-rank-row{padding:6px 8px}.result-data-grid{grid-template-columns:minmax(150px,1.08fr) minmax(116px,.72fr);gap:5px;margin:6px 0}.radar-chart{max-height:174px}.radar-label{font-size:8px}.result-data-grid .result-metrics{gap:4px}.result-data-grid .result-metrics>div{padding:6px 8px;border-radius:10px}.result-data-grid .result-metrics dt{font-size:8px}.result-data-grid .result-metrics dt small{display:none}.result-data-grid .result-metrics dd{margin-top:2px}.result-data-grid .result-metrics dd b{font-size:20px}.result-data-grid .metric-altitude dd b{font-size:15px}.result-data-grid .result-metrics dd span{font-size:8px}.radar-card figcaption{display:none}
+  .crew-results{margin-bottom:6px;padding:6px 7px}.crew-results ol{max-height:58px}.crew-results li{grid-template-columns:18px minmax(0,1fr) auto;padding:4px 5px}.crew-results-detail{display:none}
 }
 
 @media (max-height:620px) and (min-width:700px) {
@@ -3139,4 +3228,3 @@ body.guide-open .guide-modal {
   body.guide-open .guide-overlay,
   body.guide-open .guide-modal { animation:none; }
 }
->>>>>>> Stashed changes

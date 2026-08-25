@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#07111f">
   <title>EngiFar | フライトリザルト</title>
   <link rel="stylesheet" href="./style.css?v=20260824-rank">
-  <script src="./script.js?v=20260824-rank" defer></script>
+  <script src="./script.js?v=20260824-quiz-api" defer></script>
 </head>
 <body>
   <div class="app-shell" id="app" data-page="result" data-outcome="orbit">
@@ -49,6 +49,12 @@
           <div class="metric-altitude"><dt>到達距離</dt><dd><b id="result-altitude">0</b><span>km</span></dd></div>
           </dl>
         </div>
+
+        <section class="crew-results" id="crew-results" hidden aria-live="polite">
+          <header><span>CREW RESULTS</span><strong>みんなのスコア</strong></header>
+          <p id="crew-results-status">共有結果を読み込んでいます…</p>
+          <ol id="crew-results-list"></ol>
+        </section>
 
         <div class="result-actions">
           <a class="primary-button" id="card-link" href="./card.html">
