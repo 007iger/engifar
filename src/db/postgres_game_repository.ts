@@ -774,6 +774,55 @@ export class PostgresGameRepository implements GameRepository {
     }
   }
 
+  async deleteExpiredEmptyRooms(olderThanMs: number): Promise<string[]> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const targetResult = await client.query<{ id: string }>(
+        `SELECT r.id
+         FROM room r
+         WHERE EXISTS (SELECT 1 FROM participant p WHERE p.room_id = r.id)
+           AND NOT EXISTS (
+             SELECT 1 FROM participant p WHERE p.room_id = r.id AND p.left_at IS NULL
+           )
+           AND (SELECT MAX(p.left_at) FROM participant p WHERE p.room_id = r.id)
+             < now() - make_interval(secs => $1)`,
+        [olderThanMs / 1000],
+      );
+      const roomIds = targetResult.rows.map((row) => row.id);
+
+      if (roomIds.length > 0) {
+        // ON DELETE CASCADE/RESTRICTの解決順に依存しないよう、依存関係の深い順に明示的に削除する。
+        await client.query(
+          `DELETE FROM answer
+           WHERE game_session_id IN (SELECT id FROM game_session WHERE room_id = ANY($1::uuid[]))`,
+          [roomIds],
+        );
+        await client.query(
+          `DELETE FROM session_participant WHERE room_id = ANY($1::uuid[])`,
+          [roomIds],
+        );
+        await client.query(
+          `DELETE FROM game_session WHERE room_id = ANY($1::uuid[])`,
+          [roomIds],
+        );
+        await client.query(
+          `DELETE FROM participant WHERE room_id = ANY($1::uuid[])`,
+          [roomIds],
+        );
+        await client.query(`DELETE FROM room WHERE id = ANY($1::uuid[])`, [roomIds]);
+      }
+
+      await client.query("COMMIT");
+      return roomIds;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   private async authorizedHostSession(
     client: PoolClient,
     sessionId: string,

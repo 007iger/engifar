@@ -94,6 +94,10 @@ class FakeRepository implements GameRepository {
     this.disconnectedParticipantIds.push(participantId);
     return Promise.resolve({ roomId: membership.room.id });
   }
+
+  deleteExpiredEmptyRooms(): Promise<string[]> {
+    return Promise.reject(new Error("not used"));
+  }
 }
 
 Deno.test("ハートビートが切れると離脱扱いになりplayer_leftが配信される", async () => {

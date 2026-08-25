@@ -152,4 +152,11 @@ export interface GameRepository {
    * すでに離脱済みだった場合はnullを返す(二重処理の防止)。
    */
   markParticipantDisconnected(participantId: string): Promise<{ roomId: string } | null>;
+
+  /**
+   * 全参加者が離脱済みで、最後の離脱からolderThanMs以上経過した部屋を削除する(定期クリーンアップ用)。
+   * room行を削除すると、participant/game_session以下はON DELETE CASCADEで連動して削除される。
+   * 削除した部屋のIDの配列を返す。
+   */
+  deleteExpiredEmptyRooms(olderThanMs: number): Promise<string[]>;
 }

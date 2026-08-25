@@ -193,6 +193,10 @@ class FakeRepository implements GameRepository {
     this.disconnectedParticipantIds.push(participantId);
     return Promise.resolve({ roomId: membership.room.id });
   }
+
+  deleteExpiredEmptyRooms(_olderThanMs: number): Promise<string[]> {
+    return Promise.resolve([]);
+  }
 }
 
 function jsonRequest(path: string, method: string, body: unknown, token?: string): Request {
