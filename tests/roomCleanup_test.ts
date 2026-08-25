@@ -18,7 +18,8 @@ Deno.test("定期的にdeleteExpiredEmptyRoomsが呼ばれる", async () => {
 
   try {
     startRoomCleanupMonitor(repository, 10, ttlMs);
-    await new Promise((resolve) => setTimeout(resolve, 35));
+    // 完了後に次回を予約する方式なので、setIntervalより多少間隔が空くことを見込んで長めに待つ。
+    await new Promise((resolve) => setTimeout(resolve, 80));
 
     const recorded = repository as unknown as RecordingRepository;
     assert.ok(recorded.calls.length >= 2, `期待より呼び出しが少ない: ${recorded.calls.length}`);

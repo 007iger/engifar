@@ -778,7 +778,8 @@ export class PostgresGameRepository implements GameRepository {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const targetResult = await client.query<{ id: string }>(
+      // まず安価な絞り込みで候補を探す(ロックなし。この時点の結果はまだ信用しない)。
+      const candidateResult = await client.query<{ id: string }>(
         `SELECT r.id
          FROM room r
          WHERE EXISTS (SELECT 1 FROM participant p WHERE p.room_id = r.id)
@@ -789,7 +790,27 @@ export class PostgresGameRepository implements GameRepository {
              < now() - make_interval(secs => $1)`,
         [olderThanMs / 1000],
       );
-      const roomIds = targetResult.rows.map((row) => row.id);
+      const candidateIds = candidateResult.rows.map((row) => row.id);
+
+      let roomIds: string[] = [];
+      if (candidateIds.length > 0) {
+        // 候補の部屋行をFOR UPDATEでロックしてから、条件を再確認する。
+        // joinRoomも部屋行取得時にFOR UPDATEを取るため、ロック中に新規参加が割り込むことはない。
+        // (ロック取得を待っている間に参加された場合は、ここでの再確認で対象から外れる。)
+        const recheckResult = await client.query<{ id: string }>(
+          `SELECT r.id
+           FROM room r
+           WHERE r.id = ANY($1::uuid[])
+             AND NOT EXISTS (
+               SELECT 1 FROM participant p WHERE p.room_id = r.id AND p.left_at IS NULL
+             )
+             AND (SELECT MAX(p.left_at) FROM participant p WHERE p.room_id = r.id)
+               < now() - make_interval(secs => $2)
+           FOR UPDATE OF r`,
+          [candidateIds, olderThanMs / 1000],
+        );
+        roomIds = recheckResult.rows.map((row) => row.id);
+      }
 
       if (roomIds.length > 0) {
         // ON DELETE CASCADE/RESTRICTの解決順に依存しないよう、依存関係の深い順に明示的に削除する。
