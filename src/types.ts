@@ -20,6 +20,7 @@ export interface ParticipantSummary {
 
 export interface RoomDetail extends RoomSummary {
   participants: ParticipantSummary[];
+  activeSession: GameSessionSummary | null;
 }
 
 export interface MembershipResult {
@@ -51,6 +52,42 @@ export interface AnswerSummary {
   answeredAt: string;
 }
 
+export interface SessionResultAnswer {
+  questionIndex: number;
+  selectedOption: number;
+  responseTimeMs: number;
+}
+
+export interface SessionResultParticipantSource {
+  participantId: string;
+  displayName: string;
+  role: ParticipantRole;
+  answers: SessionResultAnswer[];
+}
+
+export interface SessionResultSource {
+  session: GameSessionSummary;
+  participants: SessionResultParticipantSource[];
+}
+
+export interface ParticipantQuizResult {
+  participantId: string;
+  displayName: string;
+  role: ParticipantRole;
+  answeredCount: number;
+  correctCount: number;
+  power: number;
+  safety: number;
+  averageResponseTimeMs: number | null;
+  categoryScores: Record<string, number>;
+}
+
+export interface SessionResults {
+  sessionId: string;
+  questionCount: number;
+  participants: ParticipantQuizResult[];
+}
+
 export interface AuthenticatedParticipant {
   roomId: string;
   participant: ParticipantSummary;
@@ -65,7 +102,22 @@ export interface GameRepository {
   authenticateParticipant(roomCode: string, accessToken: string): Promise<AuthenticatedParticipant>;
   /** ホストが分野を選ぶ。部屋がlobby状態の間だけ許可される。 */
   selectGenre(code: string, accessToken: string, genre: GameGenre): Promise<RoomSummary>;
-  startSession(code: string, accessToken: string): Promise<GameSessionSummary>;
+  startSession(
+    code: string,
+    accessToken: string,
+    questionCount: number,
+    answerTimeSeconds: number,
+  ): Promise<GameSessionSummary>;
+  /** 参加者トークンを検証し、その参加者が所属するゲームセッションを取得する。 */
+  getSessionForParticipant(
+    sessionId: string,
+    accessToken: string,
+  ): Promise<GameSessionSummary>;
+  /** 完了済みセッションの参加者と回答を、共有結果の集計用に取得する。 */
+  getSessionResultSource(
+    sessionId: string,
+    accessToken: string,
+  ): Promise<SessionResultSource>;
   startQuestion(
     sessionId: string,
     accessToken: string,

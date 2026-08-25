@@ -8,29 +8,39 @@
 - PostgreSQLの5テーブル（`room`、`participant`、`game_session`、
   `session_participant`、`answer`）
 - 部屋作成、部屋参加、ロビー情報取得
+- ルーム画面からの実ルーム作成・招待コード参加・参加者一覧同期
 - ホストによるゲーム開始、次の問題開始、ゲーム終了
+- ホスト開始時の全参加者のクイズ遷移と、ルーム進行に同期した出題・回答保存
+- WebSocketによる参加・退出・問題進行の即時通知と画面遷移時の再接続
+- 完了後の参加者別スコア集計と共有結果表示
 - 参加者による回答登録と、制限時間内の回答変更
 - DB接続を含むヘルスチェック
 - 問題取得・制限時間後のサーバー採点を行うクイズAPI
 - API単体テストとDBスキーマの契約テスト
 
-マルチプレイ画面との統合、切断処理、結果APIは次の実装範囲です。
-
 ## ローカル起動
 
 必要なものはDeno 2とPostgreSQLです。
 
-1. `.env.example` を参考に、ローカル用の `DATABASE_URL` と32バイト以上の
-   `QUIZ_TOKEN_SECRET` を環境変数へ設定します。
-2. 開発サーバーを起動します。未適用のDBマイグレーションは起動時に自動適用されます。
+1. PostgreSQLを起動し、アプリ専用DBを作成します。
 
-```shell
-deno task dev
+```powershell
+psql -U postgres -c "CREATE DATABASE engifar;"
 ```
 
-`.env` を使う場合は、Denoのタスク実行時に読み込めます。
+2. `.env.example`を`.env`へコピーし、ローカルPostgreSQLのユーザー名・パスワード・
+   ポートに合わせて`DATABASE_URL`を編集します。`QUIZ_TOKEN_SECRET`には32バイト以上の
+   ランダムな文字列を設定します。`.env`はGitの管理対象外です。
 
-```shell
+```powershell
+Copy-Item .env.example .env
+```
+
+3. マイグレーションを適用してから開発サーバーを起動します。サーバー起動時にも
+   未適用マイグレーションは自動適用されます。
+
+```powershell
+deno task --env-file=.env db:migrate
 deno task --env-file=.env dev
 ```
 
@@ -60,10 +70,16 @@ JSONレスポンスは成功時に `{ "data": ... }`、失敗時に
 | `POST` | `/api/rooms` | 部屋とホストを作成 | なし |
 | `POST` | `/api/rooms/:code/participants` | 部屋へ参加 | なし |
 | `GET` | `/api/rooms/:code` | 部屋と参加者一覧を取得 | なし |
-| `POST` | `/api/rooms/:code/sessions` | 12問のゲームを開始 | ホスト |
+| `POST` | `/api/rooms/:code/sessions` | クイズ設定に沿ったゲームを開始 | ホスト |
+| `GET` | `/api/sessions/:id` | 参加中セッションの進行状況を取得 | 参加者 |
+| `GET` | `/api/sessions/:id/results` | 完了したセッションの共有結果を取得 | 参加者 |
+| `POST` | `/api/sessions/:id/quiz/questions/:index/start` | ルームの進行時刻に同期して問題を取得 | 参加者 |
 | `POST` | `/api/sessions/:id/questions/:index/start` | 次の問題を開始 | ホスト |
 | `PUT` | `/api/sessions/:id/answers/:index` | 回答を登録・変更 | 参加者 |
 | `POST` | `/api/sessions/:id/complete` | ゲームを終了 | ホスト |
+
+`/ws?roomCode=<code>&token=<accessToken>`へ接続すると、参加・退出・問題開始・終了を
+リアルタイムで受信できます。画面遷移中の短い切断は再接続猶予内なら退出扱いになりません。
 
 部屋作成・参加レスポンスの `accessToken` を、以降のリクエストで
 `Authorization: Bearer <accessToken>` として送ります。DBにはトークン本体ではなくSHA-256ハッシュだけを保存します。
@@ -113,11 +129,11 @@ Gitブランチ・プレビュー環境には本番とは別の論理DBが割り
 - 同名ユーザーは許可
 - 部屋を作成した参加者をホストとする
 - ゲーム開始後の途中参加は不許可
-- デモは12問、各問題15秒
+- デモは24問、各問題10秒（答え合わせ5秒）
 - 問題本文と正解はDBへ保存せず、アプリケーション内で管理
 
-ブラウザ再読み込み後のトークン復元方法、WebSocket/SSEの選択、切断判定、採点の難易度補正は
-まだ確定していません。
+参加トークンはタブ単位の`sessionStorage`へ保存し、URLやDBへ平文で残しません。
+採点の難易度補正はまだ確定していません。
 emoji prefix にはコミット履歴が可愛くなる他にもメリットがありますが、コミット履歴が可愛くなるのが好きで使ってます。
 
 ## ブランチ保護の確認

@@ -33,7 +33,8 @@
           <button class="primary-button" id="start-button" type="button"><span>ルームを作る</span><b aria-hidden="true">🚀</b></button>
           <button class="secondary-button" id="join-room-button" type="button" aria-expanded="false" aria-controls="join-room-panel"><span>ルームに入る</span><b aria-hidden="true">→</b></button>
         </div>
-        <div class="room-entry-panel" id="join-room-panel" hidden><label for="room-code">招待コード</label><div><input id="room-code" type="text" maxlength="8" placeholder="例：STAR24"><button id="enter-room-button" type="button">参加</button></div></div>
+        <div class="room-entry-panel" id="join-room-panel" hidden><label for="room-code">招待コード</label><div><input id="room-code" type="text" maxlength="8" pattern="[A-Za-z0-9]{6,8}" placeholder="例：STAR24" autocomplete="off"><button id="enter-room-button" type="button">参加</button></div></div>
+        <p class="home-room-status" id="home-room-status" aria-live="polite"></p>
         <p class="home-room-note">名前と自由なカラーを決めて、仲間が集まるルームへ。</p>
       </section>
     </main>

@@ -49,6 +49,18 @@ Deno.test("public JavaScript does not bundle quiz questions or answers", async (
   assert.doesNotMatch(source, /<＿＿＿>EngiFar|h1は、ページの中心/);
 });
 
+Deno.test("room controls call the shared room and session APIs", async () => {
+  const source = await Deno.readTextFile("public/script.js");
+
+  assert.match(source, /["']\/api\/rooms["']/);
+  assert.match(source, /\/participants`/);
+  assert.match(source, /\/sessions`/);
+  assert.match(source, /\/answers\/\$\{index\}`/);
+  assert.match(source, /new WebSocket\(url\)/);
+  assert.match(source, /\/results`/);
+  assert.match(source, /engifar-room-auth-v1/);
+});
+
 Deno.test("all local HTML references are served successfully", async () => {
   const htmlFiles = (await walk("public")).filter((path) => path.endsWith(".html"));
 

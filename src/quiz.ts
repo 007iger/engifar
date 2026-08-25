@@ -46,6 +46,14 @@ export interface QuizGradeResult {
   nextProgressToken: string | null;
 }
 
+export interface QuizScore {
+  answeredCount: number;
+  correctCount: number;
+  power: number;
+  safety: number;
+  categoryScores: Record<string, number>;
+}
+
 interface TokenPayload {
   type: "progress" | "question";
   attemptId: string;
@@ -393,7 +401,11 @@ export class QuizService {
     };
   }
 
-  async startQuestion(index: number, progressToken: string): Promise<QuizQuestionStart> {
+  async startQuestion(
+    index: number,
+    progressToken: string,
+    revealAt?: number,
+  ): Promise<QuizQuestionStart> {
     questionAt(index);
     const progress = await this.#verify(progressToken, "progress");
     if (progress.questionIndex !== index) {
@@ -405,13 +417,17 @@ export class QuizService {
     }
 
     const now = this.#now();
+    const answerRevealAt = revealAt ?? now + this.config.answerTimeSeconds * 1000;
+    if (!Number.isFinite(answerRevealAt)) {
+      throw new ApiError(400, "INVALID_REVEAL_TIME", "Quiz reveal time is invalid");
+    }
     return {
       question: publicQuestion(index),
       questionToken: await this.#sign({
         type: "question",
         attemptId: progress.attemptId,
         questionIndex: index,
-        revealAt: now + this.config.answerTimeSeconds * 1000,
+        revealAt: answerRevealAt,
         expiresAt: progress.expiresAt,
       }),
       answerTimeSeconds: this.config.answerTimeSeconds,
@@ -453,6 +469,57 @@ export class QuizService {
       category: question.category,
       weight: question.weight,
       nextProgressToken,
+    };
+  }
+
+  scoreAnswers(
+    questionCount: number,
+    selectedOptions: readonly (number | null)[],
+  ): QuizScore {
+    if (
+      !Number.isSafeInteger(questionCount) || questionCount < 1 || questionCount > questions.length
+    ) {
+      throw new ApiError(500, "QUIZ_CONFIG_MISMATCH", "Session question count is invalid");
+    }
+
+    const categoryTotals = new Map<string, { correct: number; total: number }>();
+    let answeredCount = 0;
+    let correctCount = 0;
+    let correctWeight = 0;
+    let totalWeight = 0;
+
+    for (let index = 0; index < questionCount; index += 1) {
+      const question = questionAt(index);
+      const selectedOption = Number.isInteger(selectedOptions[index])
+        ? selectedOptions[index]
+        : null;
+      const correct = selectedOption === question.answer;
+      if (selectedOption !== null) answeredCount += 1;
+      if (correct) {
+        correctCount += 1;
+        correctWeight += question.weight;
+      }
+      totalWeight += question.weight;
+
+      const category = categoryTotals.get(question.category) ?? { correct: 0, total: 0 };
+      category.total += question.weight;
+      if (correct) category.correct += question.weight;
+      categoryTotals.set(question.category, category);
+    }
+
+    const categoryScores: Record<string, number> = {};
+    for (const [category, score] of categoryTotals) {
+      categoryScores[category] = score.total ? Math.round((score.correct / score.total) * 100) : 0;
+    }
+    const values = Object.values(categoryScores);
+    return {
+      answeredCount,
+      correctCount,
+      power: totalWeight ? Math.round((correctWeight / totalWeight) * 100) : 0,
+      safety: values.length
+        ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+        : 0,
+      categoryScores,
     };
   }
 

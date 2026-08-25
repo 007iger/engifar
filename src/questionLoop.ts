@@ -52,8 +52,10 @@ export function scheduleQuestionAdvance(
 
       broadcast(session.roomId, {
         type: "question_started",
+        sessionId: advanced.id,
         questionIndex: advanced.currentQuestionIndex,
         timeLimitSeconds: advanced.answerTimeSeconds,
+        questionStartedAt: advanced.questionStartedAt,
       });
 
       scheduleQuestionAdvance(repository, advanced, reviewTimeMs);

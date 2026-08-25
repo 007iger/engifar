@@ -1,6 +1,6 @@
 import { serveDir } from "@std/http/file-server";
 import { ApiError } from "./errors.ts";
-import type { GameGenre, GameRepository } from "./types.ts";
+import type { GameGenre, GameRepository, SessionResults } from "./types.ts";
 import { broadcast, handleWsUpgrade } from "./ws.ts";
 import { scheduleQuestionAdvance, triggerEarlyQuestionEnd } from "./questionLoop.ts";
 import { createQuizService, type QuizService } from "./quiz.ts";
@@ -268,17 +268,21 @@ async function handleApi(
     const result = await repository.startSession(
       roomCode(decodeURIComponent(roomSessionsMatch[1])),
       bearerToken(request),
+      quizService.config.questionCount,
+      quizService.config.answerTimeSeconds,
     );
-    broadcast(result.roomId, { type: "host_started" });
+    broadcast(result.roomId, { type: "host_started", session: result });
     // startSessionの時点で1問目(index 0)がすでに開始されているので、
     // question_startedの配信とタイマー予約もここで行う。
     if (result.currentQuestionIndex !== null) {
       broadcast(result.roomId, {
         type: "question_started",
+        sessionId: result.id,
         questionIndex: result.currentQuestionIndex,
         timeLimitSeconds: result.answerTimeSeconds,
+        questionStartedAt: result.questionStartedAt,
       });
-      scheduleQuestionAdvance(repository, result);
+      scheduleQuestionAdvance(repository, result, quizService.config.reviewTimeSeconds * 1000);
     }
     return json({ data: result }, 201);
   }
@@ -286,6 +290,91 @@ async function handleApi(
   const roomMatch = pathname.match(/^\/api\/rooms\/([^/]+)$/);
   if (request.method === "GET" && roomMatch) {
     return json({ data: await repository.getRoom(roomCode(decodeURIComponent(roomMatch[1]))) });
+  }
+
+  const sessionResultsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/results$/);
+  if (request.method === "GET" && sessionResultsMatch) {
+    const source = await repository.getSessionResultSource(
+      sessionId(decodeURIComponent(sessionResultsMatch[1])),
+      bearerToken(request),
+    );
+    const participants = source.participants.map((participant) => {
+      const selectedOptions: (number | null)[] = Array(source.session.questionCount).fill(null);
+      for (const answer of participant.answers) {
+        if (answer.questionIndex >= 0 && answer.questionIndex < selectedOptions.length) {
+          selectedOptions[answer.questionIndex] = answer.selectedOption;
+        }
+      }
+      const score = quizService.scoreAnswers(source.session.questionCount, selectedOptions);
+      const responseTimes = participant.answers.map((answer) => answer.responseTimeMs);
+      return {
+        participantId: participant.participantId,
+        displayName: participant.displayName,
+        role: participant.role,
+        ...score,
+        averageResponseTimeMs: responseTimes.length
+          ? Math.round(
+            responseTimes.reduce((sum, responseTime) => sum + responseTime, 0) /
+              responseTimes.length,
+          )
+          : null,
+      };
+    });
+    participants.sort((left, right) =>
+      right.power - left.power || right.safety - left.safety ||
+      (left.averageResponseTimeMs ?? Number.MAX_SAFE_INTEGER) -
+        (right.averageResponseTimeMs ?? Number.MAX_SAFE_INTEGER)
+    );
+    const results: SessionResults = {
+      sessionId: source.session.id,
+      questionCount: source.session.questionCount,
+      participants,
+    };
+    return json({ data: results });
+  }
+
+  const sessionMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
+  if (request.method === "GET" && sessionMatch) {
+    return json({
+      data: await repository.getSessionForParticipant(
+        sessionId(decodeURIComponent(sessionMatch[1])),
+        bearerToken(request),
+      ),
+    });
+  }
+
+  const multiplayerQuizStartMatch = pathname.match(
+    /^\/api\/sessions\/([^/]+)\/quiz\/questions\/([^/]+)\/start$/,
+  );
+  if (request.method === "POST" && multiplayerQuizStartMatch) {
+    const requestedIndex = questionIndex(multiplayerQuizStartMatch[2]);
+    const session = await repository.getSessionForParticipant(
+      sessionId(multiplayerQuizStartMatch[1]),
+      bearerToken(request),
+    );
+    if (
+      session.status === "cancelled" || session.currentQuestionIndex === null ||
+      requestedIndex > session.currentQuestionIndex || requestedIndex >= session.questionCount
+    ) {
+      throw new ApiError(
+        409,
+        "QUESTION_NOT_AVAILABLE",
+        "This question is not available in the room session",
+      );
+    }
+
+    const body = await readJsonObject(request);
+    const revealAt = session.status === "active" &&
+        requestedIndex === session.currentQuestionIndex && session.questionStartedAt
+      ? Date.parse(session.questionStartedAt) + session.answerTimeSeconds * 1000
+      : Date.now();
+    return json({
+      data: await quizService.startQuestion(
+        requestedIndex,
+        quizTokenFrom(body, "progressToken"),
+        revealAt,
+      ),
+    });
   }
 
   const startQuestionMatch = pathname.match(
@@ -300,10 +389,12 @@ async function handleApi(
     );
     broadcast(result.roomId, {
       type: "question_started",
+      sessionId: result.id,
       questionIndex: result.currentQuestionIndex ?? requestedIndex,
       timeLimitSeconds: result.answerTimeSeconds,
+      questionStartedAt: result.questionStartedAt,
     });
-    scheduleQuestionAdvance(repository, result);
+    scheduleQuestionAdvance(repository, result, quizService.config.reviewTimeSeconds * 1000);
     return json({ data: result });
   }
 

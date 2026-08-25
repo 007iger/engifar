@@ -9,9 +9,11 @@ import type {
   MembershipResult,
   RoomDetail,
   RoomSummary,
+  SessionResultSource,
 } from "../src/types.ts";
 
 const TOKEN = "test_access_token_that_is_long_enough";
+const SECOND_TOKEN = "second_access_token_that_is_long_enough";
 const NOW = "2026-08-24T00:00:00.000Z";
 
 const membership: MembershipResult = {
@@ -39,13 +41,27 @@ class FakeRepository implements GameRepository {
     _roomCode: string,
     accessToken: string,
   ): Promise<AuthenticatedParticipant> {
-    if (accessToken !== TOKEN) throw new Error("invalid token");
-    return Promise.resolve({ roomId: membership.room.id, participant: membership.participant });
+    if (accessToken === TOKEN) {
+      return Promise.resolve({ roomId: membership.room.id, participant: membership.participant });
+    }
+    if (accessToken === SECOND_TOKEN) {
+      return Promise.resolve({
+        roomId: membership.room.id,
+        participant: { ...membership.participant, id: "participant-2", role: "player" },
+      });
+    }
+    throw new Error("invalid token");
   }
   selectGenre(): Promise<RoomSummary> {
     return Promise.reject(new Error("not used"));
   }
   startSession(): Promise<GameSessionSummary> {
+    return Promise.reject(new Error("not used"));
+  }
+  getSessionForParticipant(): Promise<GameSessionSummary> {
+    return Promise.reject(new Error("not used"));
+  }
+  getSessionResultSource(): Promise<SessionResultSource> {
     return Promise.reject(new Error("not used"));
   }
   startQuestion(): Promise<GameSessionSummary> {
@@ -83,7 +99,7 @@ class FakeRepository implements GameRepository {
 Deno.test("ハートビートが切れると離脱扱いになりplayer_leftが配信される", async () => {
   const repository = new FakeRepository();
   const server = Deno.serve({ port: 8197 }, createApp(repository));
-  startHeartbeatMonitor(repository, 20, 50);
+  startHeartbeatMonitor(repository, 20, 50, 30);
 
   try {
     // 見届け役: 定期的に何か送って自分は生存させ続け、player_left通知を受け取れるようにする。
@@ -96,15 +112,20 @@ Deno.test("ハートビートが切れると離脱扱いになりplayer_leftが�
     const keepAlive = setInterval(() => watcher.send("keep-alive"), 15);
 
     // 離脱させる側: 何も送らないので、ハートビートのタイムアウト(50ms)で切断される。
-    const victim = new WebSocket(`ws://localhost:8197/ws?roomCode=ABC234&token=${TOKEN}`);
+    const victim = new WebSocket(
+      `ws://localhost:8197/ws?roomCode=ABC234&token=${SECOND_TOKEN}`,
+    );
     await new Promise((resolve) => {
       victim.onopen = resolve;
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    const deadline = Date.now() + 1_000;
+    while (!received.some((event) => event.type === "player_left") && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     clearInterval(keepAlive);
 
-    assert.deepEqual(repository.disconnectedParticipantIds, [membership.participant.id]);
+    assert.deepEqual(repository.disconnectedParticipantIds, ["participant-2"]);
     assert.ok(received.some((event) => event.type === "player_left"));
 
     watcher.close();
@@ -117,6 +138,7 @@ Deno.test("ハートビートが切れると離脱扱いになりplayer_leftが�
 Deno.test("正常にWebSocketを閉じた場合もDB上の離脱処理が呼ばれる", async () => {
   const repository = new FakeRepository();
   const server = Deno.serve({ port: 8196 }, createApp(repository));
+  startHeartbeatMonitor(repository, 1_000, 1_000, 30);
 
   try {
     const ws = new WebSocket(`ws://localhost:8196/ws?roomCode=ABC234&token=${TOKEN}`);
@@ -125,10 +147,36 @@ Deno.test("正常にWebSocketを閉じた場合もDB上の離脱処理が呼ば�
     });
 
     ws.close();
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     assert.deepEqual(repository.disconnectedParticipantIds, [membership.participant.id]);
   } finally {
+    stopHeartbeatMonitor();
+    await server.shutdown();
+  }
+});
+
+Deno.test("画面遷移中に再接続すれば離脱扱いにならない", async () => {
+  const repository = new FakeRepository();
+  const server = Deno.serve({ port: 8195 }, createApp(repository));
+  startHeartbeatMonitor(repository, 2_000, 2_000, 500);
+
+  try {
+    const first = new WebSocket(`ws://localhost:8195/ws?roomCode=ABC234&token=${TOKEN}`);
+    await new Promise((resolve) => first.addEventListener("open", resolve, { once: true }));
+    first.close();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const reconnected = new WebSocket(`ws://localhost:8195/ws?roomCode=ABC234&token=${TOKEN}`);
+    await new Promise((resolve) => reconnected.addEventListener("open", resolve, { once: true }));
+    await new Promise((resolve) => setTimeout(resolve, 550));
+    assert.deepEqual(repository.disconnectedParticipantIds, []);
+
+    reconnected.close();
+    await new Promise((resolve) => setTimeout(resolve, 550));
+    assert.deepEqual(repository.disconnectedParticipantIds, [membership.participant.id]);
+  } finally {
+    stopHeartbeatMonitor();
     await server.shutdown();
   }
 });

@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = "engifar-mission-v4";
   const LEGACY_STORAGE_KEY = "engifar-mission-v3";
+  const ROOM_AUTH_STORAGE_KEY = "engifar-room-auth-v1";
   const OUTPUT_THRESHOLD = 60;
   const SAFETY_THRESHOLD = 75;
   let quizConfig = Object.freeze({ questionCount: 24, answerTimeSeconds: 10, reviewTimeSeconds: 5 });
@@ -48,11 +49,102 @@
     const response = await fetch(path, { ...options, headers });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
-      throw new Error(payload && payload.error && payload.error.message
+      const error = new Error(payload && payload.error && payload.error.message
         ? payload.error.message
         : `API request failed (${response.status})`);
+      error.code = payload && payload.error ? payload.error.code : null;
+      error.status = response.status;
+      throw error;
     }
     return payload.data;
+  }
+
+  function saveRoomAuth(membership) {
+    const value = {
+      roomCode: membership.room.code,
+      roomId: membership.room.id,
+      accessToken: membership.accessToken,
+      participantId: membership.participant.id,
+      role: membership.participant.role
+    };
+    globalThis.sessionStorage.setItem(ROOM_AUTH_STORAGE_KEY, JSON.stringify(value));
+    return value;
+  }
+
+  function loadRoomAuth(code) {
+    try {
+      const value = JSON.parse(globalThis.sessionStorage.getItem(ROOM_AUTH_STORAGE_KEY) || "null");
+      if (!value || value.roomCode !== code || typeof value.accessToken !== "string") return null;
+      return value;
+    } catch {
+      return null;
+    }
+  }
+
+  function bearerHeaders(auth) {
+    return { authorization: `Bearer ${auth.accessToken}` };
+  }
+
+  function connectRoomSocket(auth, onEvent = () => {}, onStatus = () => {}) {
+    let socket = null;
+    let heartbeatTimer = null;
+    let reconnectTimer = null;
+    let stopped = false;
+    let retryCount = 0;
+
+    function clearTimers() {
+      if (heartbeatTimer !== null) globalThis.clearInterval(heartbeatTimer);
+      if (reconnectTimer !== null) globalThis.clearTimeout(reconnectTimer);
+      heartbeatTimer = null;
+      reconnectTimer = null;
+    }
+
+    function open() {
+      if (stopped) return;
+      const url = new URL("/ws", globalThis.location.href);
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      url.searchParams.set("roomCode", auth.roomCode);
+      url.searchParams.set("token", auth.accessToken);
+      socket = new WebSocket(url);
+      onStatus("connecting");
+
+      socket.addEventListener("open", () => {
+        retryCount = 0;
+        onStatus("connected");
+        heartbeatTimer = globalThis.setInterval(() => {
+          if (socket && socket.readyState === WebSocket.OPEN) socket.send("heartbeat");
+        }, 5_000);
+      });
+      socket.addEventListener("message", (event) => {
+        try {
+          onEvent(JSON.parse(event.data));
+        } catch {
+          // Unknown messages are ignored so a malformed event cannot stop reconnection.
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (heartbeatTimer !== null) globalThis.clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+        socket = null;
+        if (stopped) return;
+        onStatus("reconnecting");
+        retryCount += 1;
+        const delay = Math.min(5_000, 500 * 2 ** Math.min(retryCount - 1, 4));
+        reconnectTimer = globalThis.setTimeout(open, delay);
+      });
+      socket.addEventListener("error", () => onStatus("reconnecting"));
+    }
+
+    function stop() {
+      if (stopped) return;
+      stopped = true;
+      clearTimers();
+      socket?.close();
+    }
+
+    globalThis.addEventListener("pagehide", stop, { once: true });
+    open();
+    return { stop };
   }
 
   function createDefaultState() {
@@ -64,7 +156,7 @@
       playerConfigured: false,
       cardOpened: false,
       player: { name: "CREW MEMBER", color: "#54d37c" },
-      room: { mode: "create", name: "ロケット部", code: "------" },
+      room: { mode: "create", name: "ロケット部", code: "------", sessionId: null },
       quiz: {
         index: 0,
         answers: Array(quizConfig.questionCount).fill(null),
@@ -132,7 +224,8 @@
       room: {
         mode: roomSource.mode === "join" ? "join" : "create",
         name: String(roomSource.name || "ロケット部").trim().slice(0, 20) || "ロケット部",
-        code: String(roomSource.code || "------").trim().toUpperCase().slice(0, 8) || "------"
+        code: String(roomSource.code || "------").trim().toUpperCase().slice(0, 8) || "------",
+        sessionId: typeof roomSource.sessionId === "string" ? roomSource.sessionId : null
       },
       quiz: {
         index: Math.round(clamp(safeNumber(quizSource.index, 0), 0, quizConfig.questionCount)),
@@ -282,7 +375,11 @@
     const createButton = document.querySelector("#start-button");
     const joinButton = document.querySelector("#enter-room-button");
     const roomCode = document.querySelector("#room-code");
-    if (!nameInput || !colorInput || !hueSlider || !palette || !createButton || !joinButton) return;
+    const roomStatus = document.querySelector("#home-room-status");
+    if (
+      !nameInput || !colorInput || !hueSlider || !palette || !joinToggle || !joinPanel ||
+      !createButton || !joinButton || !roomCode || !roomStatus
+    ) return;
 
     nameInput.value = state.player.name;
     colorInput.value = state.player.color;
@@ -339,12 +436,16 @@
 
     hueSlider.addEventListener("input", () => renderPalette(true));
 
-    function createRoomCode() {
-      const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-      return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
-    }
+    async function enterRoom(mode) {
+      if (createButton.disabled || joinButton.disabled) return;
+      const requestedCode = roomCode.value.trim().toUpperCase();
+      if (mode === "join" && !/^[A-Z0-9]{6,8}$/.test(requestedCode)) {
+        roomStatus.textContent = "招待コードを6〜8文字の英数字で入力してください。";
+        roomStatus.dataset.kind = "error";
+        roomCode.focus();
+        return;
+      }
 
-    function enterRoom(mode) {
       const fresh = createDefaultState();
       fresh.playerConfigured = true;
       fresh.status = "room";
@@ -352,12 +453,37 @@
         name: nameInput.value.trim().slice(0, 18) || "CREW MEMBER",
         color: normalizeColor(colorInput.value)
       };
-      fresh.room = mode === "join"
-        ? { mode: "join", name: "招待ルーム", code: (roomCode.value.trim().toUpperCase() || "STAR24").slice(0, 8) }
-        : { mode: "create", name: "ENGIFAR", code: createRoomCode() };
       createButton.disabled = true;
       joinButton.disabled = true;
-      goTo("./room.html", fresh);
+      roomStatus.textContent = mode === "create" ? "ルームを作成しています…" : "ルームへ参加しています…";
+      roomStatus.dataset.kind = "loading";
+
+      try {
+        const path = mode === "create"
+          ? "/api/rooms"
+          : `/api/rooms/${encodeURIComponent(requestedCode)}/participants`;
+        const membership = await requestApi(path, {
+          method: "POST",
+          body: JSON.stringify({ displayName: fresh.player.name })
+        });
+        saveRoomAuth(membership);
+        fresh.room = {
+          mode,
+          name: mode === "join" ? "招待ルーム" : "ENGIFAR",
+          code: membership.room.code,
+          sessionId: null
+        };
+        goTo("./room.html", fresh);
+      } catch (error) {
+        const messages = {
+          ROOM_NOT_FOUND: "その招待コードのルームは見つかりませんでした。",
+          ROOM_NOT_JOINABLE: "このルームのクイズはすでに始まっています。"
+        };
+        roomStatus.textContent = messages[error.code] || `ルームへ接続できませんでした。${error.message}`;
+        roomStatus.dataset.kind = "error";
+        createButton.disabled = false;
+        joinButton.disabled = false;
+      }
     }
 
     function toggleJoinPanel() {
@@ -367,28 +493,164 @@
     }
 
     joinToggle.addEventListener("click", toggleJoinPanel);
-    createButton.addEventListener("click", () => enterRoom("create"));
-    joinButton.addEventListener("click", () => enterRoom("join"));
+    createButton.addEventListener("click", () => void enterRoom("create"));
+    joinButton.addEventListener("click", () => void enterRoom("join"));
     nameInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") enterRoom("create");
+      if (event.key === "Enter") void enterRoom(joinPanel.hidden ? "create" : "join");
+    });
+    roomCode.addEventListener("input", () => {
+      roomCode.value = roomCode.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+      roomStatus.textContent = "";
+      roomStatus.dataset.kind = "";
+    });
+    roomCode.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") void enterRoom("join");
     });
   }
 
   function initRoom() {
     if (!requirePlayer()) return;
-    const colorTargets = [document.querySelector("#room-player-avatar"), document.querySelector("#room-list-avatar")];
-    colorTargets.forEach((target) => target && target.style.setProperty("--crew-color", state.player.color));
-    document.querySelector("#room-player-name").textContent = state.player.name;
-    document.querySelector("#room-code-value").textContent = state.room.code;
+    const playerAvatar = document.querySelector("#room-player-avatar");
+    const playerList = document.querySelector("#room-player-list");
+    const roomCodeValue = document.querySelector("#room-code-value");
+    const startButton = document.querySelector("#room-start-button");
+    const lobbyMessage = document.querySelector("#room-lobby-message");
+    const lobbyStatus = document.querySelector("#room-lobby-status");
+    if (
+      !playerAvatar || !playerList || !roomCodeValue || !startButton || !lobbyMessage ||
+      !lobbyStatus
+    ) return;
+
+    playerAvatar.style.setProperty("--crew-color", state.player.color);
+    roomCodeValue.textContent = state.room.code;
     setStateLink(document.querySelector("#room-home-link"), "./index.html", state);
-    document.querySelector("#room-start-button").addEventListener("click", () => {
+
+    const auth = loadRoomAuth(state.room.code);
+    if (!auth) {
+      startButton.disabled = true;
+      lobbyStatus.textContent = "参加情報を確認できません。トップ画面からルームへ入り直してください。";
+      lobbyStatus.dataset.kind = "error";
+      return;
+    }
+
+    const crewColors = ["#54d37c", "#5ca9ff", "#f5cf4b", "#ff665f", "#b889ff", "#62e4ec"];
+    let enteredQuiz = false;
+    let refreshing = false;
+
+    function colorFor(participant, index) {
+      if (participant.id === auth.participantId) return state.player.color;
+      let hash = 0;
+      for (const character of participant.id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+      return crewColors[(hash + index) % crewColors.length];
+    }
+
+    function renderParticipants(participants) {
+      playerList.replaceChildren();
+      participants.forEach((participant, index) => {
+        const card = document.createElement("div");
+        card.className = "room-player-card";
+        if (participant.id === auth.participantId) card.classList.add("is-you");
+
+        const avatar = document.createElement("span");
+        avatar.className = "crew-avatar crew-avatar--small";
+        avatar.style.setProperty("--crew-color", colorFor(participant, index));
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.append(document.createElement("i"));
+
+        const copy = document.createElement("div");
+        const role = document.createElement("small");
+        role.textContent = participant.role === "host" ? "HOST CREW" : "READY CREW";
+        const name = document.createElement("strong");
+        name.textContent = participant.displayName;
+        copy.append(role, name);
+
+        const badge = document.createElement("span");
+        badge.className = "ready-badge";
+        badge.textContent = participant.id === auth.participantId ? "YOU" : "準備OK";
+        card.append(avatar, copy, badge);
+        playerList.append(card);
+      });
+      lobbyMessage.textContent = `${participants.length}人のクルーが参加中です。招待コードを仲間に伝えましょう。`;
+    }
+
+    function enterQuiz(session) {
+      if (enteredQuiz || !session || !session.id) return;
+      enteredQuiz = true;
       const next = createDefaultState();
       next.playerConfigured = true;
       next.player = { ...state.player };
-      next.room = { ...state.room };
+      next.room = { ...state.room, sessionId: session.id };
       next.status = "quiz";
       goTo("./quiz.html", next);
-    });
+    }
+
+    async function refreshRoom() {
+      if (refreshing || enteredQuiz) return;
+      refreshing = true;
+      try {
+        const room = await requestApi(`/api/rooms/${encodeURIComponent(state.room.code)}`);
+        renderParticipants(room.participants);
+        lobbyStatus.textContent = "サーバーに接続済み";
+        lobbyStatus.dataset.kind = "connected";
+        if (room.status === "playing" && room.activeSession) enterQuiz(room.activeSession);
+        if (room.status === "results") {
+          startButton.disabled = true;
+          lobbyStatus.textContent = "このルームのクイズは終了しました。";
+        }
+      } catch (error) {
+        lobbyStatus.textContent = `ロビーを更新できませんでした。${error.message}`;
+        lobbyStatus.dataset.kind = "error";
+      } finally {
+        refreshing = false;
+      }
+    }
+
+    if (auth.role === "host") {
+      startButton.addEventListener("click", async () => {
+        if (startButton.disabled || enteredQuiz) return;
+        startButton.disabled = true;
+        startButton.querySelector("span").textContent = "開始しています…";
+        try {
+          const session = await requestApi(
+            `/api/rooms/${encodeURIComponent(state.room.code)}/sessions`,
+            { method: "POST", headers: bearerHeaders(auth) }
+          );
+          enterQuiz(session);
+        } catch (error) {
+          lobbyStatus.textContent = `クイズを開始できませんでした。${error.message}`;
+          lobbyStatus.dataset.kind = "error";
+          startButton.disabled = false;
+          startButton.querySelector("span").textContent = "クイズを始める";
+        }
+      });
+    } else {
+      startButton.disabled = true;
+      startButton.querySelector("span").textContent = "ホストの開始を待っています";
+      lobbyMessage.textContent = "ホストがクイズを開始すると、自動で同じクイズへ移動します。";
+    }
+
+    connectRoomSocket(
+      auth,
+      (event) => {
+        if (event.type === "player_joined" || event.type === "player_left") {
+          void refreshRoom();
+        } else if (event.type === "host_started" && event.session) {
+          enterQuiz(event.session);
+        }
+      },
+      (connectionStatus) => {
+        if (lobbyStatus.dataset.kind === "error") return;
+        lobbyStatus.textContent = connectionStatus === "connected"
+          ? "リアルタイム接続済み"
+          : connectionStatus === "reconnecting"
+          ? "再接続しています…"
+          : "接続しています…";
+        lobbyStatus.dataset.kind = connectionStatus === "connected" ? "connected" : "loading";
+      }
+    );
+
+    void refreshRoom();
+    globalThis.setInterval(() => void refreshRoom(), 5_000);
   }
 
   function initGuide() {
@@ -533,6 +795,352 @@
     return () => globalThis.cancelAnimationFrame(requestId);
   }
 
+  async function initMultiplayerQuiz(elements, auth) {
+    const sessionId = state.room.sessionId;
+    let currentSession = null;
+    let currentRenderedIndex = null;
+    let currentQuestionToken = null;
+    let reviewingIndex = null;
+    let syncing = false;
+    let rendering = false;
+    let finished = false;
+    let phaseToken = 0;
+    let cancelClock = () => {};
+    let answerQueue = Promise.resolve();
+    let syncTimer = null;
+
+    function launchRoomCorrectConfetti() {
+      document.querySelectorAll(".correct-confetti").forEach((effect) => effect.remove());
+      const effect = document.createElement("div");
+      effect.className = "correct-confetti";
+      effect.setAttribute("aria-hidden", "true");
+      const colors = ["#fff176", "#ffd83d", "#ffc928", "#ffb817"];
+      ["left", "right"].forEach((side) => {
+        for (let index = 0; index < 18; index += 1) {
+          const piece = document.createElement("i");
+          const horizontal = 45 + Math.random() * 230;
+          const vertical = 150 + Math.random() * 310;
+          piece.className = `confetti-piece confetti-piece--${side}`;
+          piece.style.setProperty("--confetti-x", `${side === "left" ? horizontal : -horizontal}px`);
+          piece.style.setProperty("--confetti-apex-x", `${side === "left" ? horizontal * .7 : -horizontal * .7}px`);
+          piece.style.setProperty("--confetti-apex-y", `${-vertical}px`);
+          piece.style.setProperty("--confetti-end-y", `${-vertical * .48}px`);
+          piece.style.setProperty("--confetti-rotate", `${Math.round(220 + Math.random() * 620)}deg`);
+          piece.style.setProperty("--confetti-delay", `${(Math.random() * .22).toFixed(2)}s`);
+          piece.style.setProperty("--confetti-color", colors[index % colors.length]);
+          effect.append(piece);
+        }
+      });
+      document.body.append(effect);
+      globalThis.setTimeout(() => effect.remove(), 1900);
+    }
+
+    function answerEndTime(session) {
+      return session.questionStartedAt
+        ? Date.parse(session.questionStartedAt) + session.answerTimeSeconds * 1000
+        : Date.now();
+    }
+
+    function finishQuiz() {
+      if (finished) return;
+      finished = true;
+      phaseToken += 1;
+      cancelClock();
+      if (syncTimer !== null) globalThis.clearInterval(syncTimer);
+      state.quiz.index = quizConfig.questionCount;
+      state.metrics = computeMetrics(state.quiz.records);
+      state.outcome = null;
+      state.status = "rocket";
+      goTo("./rocket.html", state);
+    }
+
+    async function createAttemptIfNeeded() {
+      if (state.quiz.progressToken || state.quiz.index >= quizConfig.questionCount) return;
+      const attempt = await requestApi("/api/quiz/attempts", { method: "POST" });
+      state.quiz.index = 0;
+      state.quiz.answers = Array(quizConfig.questionCount).fill(null);
+      state.quiz.records = Array(quizConfig.questionCount).fill(null);
+      state.quiz.progressToken = attempt.progressToken;
+      state.metrics = null;
+      state.outcome = null;
+      persist(state);
+    }
+
+    async function gradeQuestion(index, questionToken, showFeedback) {
+      let result;
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        try {
+          result = await requestApi(`/api/quiz/questions/${index}/grade`, {
+            method: "POST",
+            body: JSON.stringify({
+              questionToken,
+              selectedOption: Number.isInteger(state.quiz.answers[index])
+                ? state.quiz.answers[index]
+                : null
+            })
+          });
+          break;
+        } catch (error) {
+          if (error.code !== "QUIZ_REVIEW_NOT_READY" || attempt === 11) throw error;
+          await new Promise((resolve) => globalThis.setTimeout(resolve, 100));
+        }
+      }
+
+      const selectedChoice = Number.isInteger(state.quiz.answers[index])
+        ? state.quiz.answers[index]
+        : null;
+      state.quiz.records[index] = {
+        selected: selectedChoice,
+        correct: result.correct,
+        category: result.category,
+        weight: result.weight
+      };
+      state.quiz.index = index + 1;
+      state.quiz.progressToken = result.nextProgressToken;
+      persist(state);
+
+      if (showFeedback) {
+        if (result.correct) launchRoomCorrectConfetti();
+        [...elements.answers.children].forEach((button, answerIndex) => {
+          button.disabled = true;
+          button.classList.toggle("is-answer", answerIndex === result.correctOption);
+          button.classList.toggle(
+            "is-selected",
+            answerIndex === selectedChoice && answerIndex !== result.correctOption
+          );
+          button.classList.toggle(
+            "is-muted",
+            answerIndex !== result.correctOption && answerIndex !== selectedChoice
+          );
+        });
+        elements.feedbackIcon.textContent = result.correct ? "✓" : "✦";
+        elements.feedbackTitle.textContent = result.correct ? "ナイスチャージ！" : "正解を確認！";
+        elements.feedbackText.textContent = selectedChoice === null
+          ? `今回は自動で答えを確認しました。${result.explanation}`
+          : `${result.explanation} 次の推進力にしよう。`;
+      }
+      return result;
+    }
+
+    async function catchUpTo(targetIndex) {
+      while (state.quiz.index < targetIndex) {
+        const index = state.quiz.index;
+        const start = await requestApi(
+          `/api/sessions/${encodeURIComponent(sessionId)}/quiz/questions/${index}/start`,
+          {
+            method: "POST",
+            headers: bearerHeaders(auth),
+            body: JSON.stringify({ progressToken: state.quiz.progressToken })
+          }
+        );
+        await gradeQuestion(index, start.questionToken, false);
+      }
+    }
+
+    async function showReview(index, token, session) {
+      if (
+        finished || token !== phaseToken || reviewingIndex === index ||
+        state.quiz.index !== index || !currentQuestionToken
+      ) return;
+      reviewingIndex = index;
+      cancelClock();
+      elements.card.dataset.mode = "review";
+      elements.timerLabel.textContent = "確認";
+      elements.reviewCount.hidden = false;
+      [...elements.answers.children].forEach((button) => button.disabled = true);
+
+      try {
+        await gradeQuestion(index, currentQuestionToken, true);
+      } catch (error) {
+        if (token !== phaseToken) return;
+        reviewingIndex = null;
+        elements.feedbackIcon.textContent = "!";
+        elements.feedbackTitle.textContent = "答え合わせに失敗しました";
+        elements.feedbackText.textContent = error.message;
+        return;
+      }
+      if (token !== phaseToken) return;
+
+      const nextQuestionAt = answerEndTime(session) + quizConfig.reviewTimeSeconds * 1000;
+      const remainingSeconds = Math.max(0.05, (nextQuestionAt - Date.now()) / 1000);
+      cancelClock = runClock(
+        remainingSeconds,
+        (shown, ratio) => {
+          elements.timerValue.textContent = String(shown);
+          elements.reviewCount.textContent = String(shown);
+          elements.timer.style.setProperty("--timer-progress", String(ratio));
+        },
+        () => void syncSession()
+      );
+    }
+
+    async function renderQuestion(session) {
+      const index = session.currentQuestionIndex;
+      if (
+        finished || rendering || index === null || currentRenderedIndex === index ||
+        state.quiz.index !== index
+      ) return;
+      rendering = true;
+      phaseToken += 1;
+      const token = phaseToken;
+      cancelClock();
+      reviewingIndex = null;
+      currentQuestionToken = null;
+      document.querySelectorAll(".correct-confetti").forEach((effect) => effect.remove());
+
+      elements.card.dataset.mode = "answer";
+      elements.feedbackIcon.textContent = "✦";
+      elements.feedbackTitle.textContent = "問題を読み込んでいます";
+      elements.feedbackText.textContent = "ルームの進行と同期しています。";
+      elements.answers.replaceChildren();
+
+      try {
+        const start = await requestApi(
+          `/api/sessions/${encodeURIComponent(sessionId)}/quiz/questions/${index}/start`,
+          {
+            method: "POST",
+            headers: bearerHeaders(auth),
+            body: JSON.stringify({ progressToken: state.quiz.progressToken })
+          }
+        );
+        if (token !== phaseToken) return;
+
+        const question = start.question;
+        const selectedChoice = Number.isInteger(state.quiz.answers[index])
+          ? state.quiz.answers[index]
+          : null;
+        currentRenderedIndex = index;
+        currentQuestionToken = start.questionToken;
+        elements.current.textContent = String(index + 1).padStart(2, "0");
+        elements.category.textContent = question.category;
+        elements.difficulty.textContent = difficultyLabel(question.weight);
+        elements.progress.style.width = `${((index + 1) / quizConfig.questionCount) * 100}%`;
+        elements.timerLabel.textContent = "回答";
+        elements.instruction.textContent = question.instruction;
+        elements.question.textContent = question.question;
+        elements.feedbackIcon.textContent = "✦";
+        elements.feedbackTitle.textContent = "仲間と同じ問題に挑戦中です";
+        elements.feedbackText.textContent = "選んだ答えはルームへ送信され、時間内なら変更できます。";
+        elements.reviewCount.hidden = true;
+
+        question.choices.forEach((choice, choiceIndex) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "answer-button";
+          button.dataset.choice = String(choiceIndex);
+          button.innerHTML = `<span>${String.fromCharCode(65 + choiceIndex)}</span><span></span>`;
+          button.lastElementChild.textContent = choice;
+          button.classList.toggle("is-selected", choiceIndex === selectedChoice);
+          button.setAttribute("aria-pressed", String(choiceIndex === selectedChoice));
+          button.addEventListener("click", () => {
+            state.quiz.answers[index] = choiceIndex;
+            persist(state);
+            [...elements.answers.children].forEach((answerButton, answerIndex) => {
+              const selected = answerIndex === choiceIndex;
+              answerButton.classList.toggle("is-selected", selected);
+              answerButton.setAttribute("aria-pressed", String(selected));
+            });
+
+            answerQueue = answerQueue.then(() => requestApi(
+              `/api/sessions/${encodeURIComponent(sessionId)}/answers/${index}`,
+              {
+                method: "PUT",
+                headers: bearerHeaders(auth),
+                body: JSON.stringify({ selectedOption: choiceIndex })
+              }
+            )).catch((error) => {
+              if (currentRenderedIndex !== index || reviewingIndex === index) return;
+              elements.feedbackIcon.textContent = "!";
+              elements.feedbackTitle.textContent = "回答を送信できませんでした";
+              elements.feedbackText.textContent = error.message;
+            });
+          });
+          elements.answers.append(button);
+        });
+
+        const remainingSeconds = Math.max(0.05, (answerEndTime(session) - Date.now()) / 1000);
+        cancelClock = runClock(
+          remainingSeconds,
+          (shown, ratio) => {
+            elements.timerValue.textContent = String(shown);
+            elements.timer.style.setProperty("--timer-progress", String(ratio));
+          },
+          () => void showReview(index, token, session)
+        );
+      } catch (error) {
+        if (token !== phaseToken) return;
+        elements.feedbackIcon.textContent = "!";
+        elements.feedbackTitle.textContent = "問題を読み込めませんでした";
+        elements.feedbackText.textContent = error.message;
+      } finally {
+        rendering = false;
+      }
+    }
+
+    async function syncSession() {
+      if (syncing || finished) return;
+      syncing = true;
+      try {
+        const session = await requestApi(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+          headers: bearerHeaders(auth)
+        });
+        currentSession = session;
+        if (session.questionCount !== quizConfig.questionCount) {
+          throw new Error("ルームとクイズの問題数が一致していません。ルームを作り直してください。");
+        }
+
+        if (session.status === "completed") {
+          await catchUpTo(session.questionCount);
+          finishQuiz();
+          return;
+        }
+        if (session.currentQuestionIndex === null) return;
+
+        await catchUpTo(session.currentQuestionIndex);
+        if (state.quiz.index === session.currentQuestionIndex) {
+          await renderQuestion(session);
+          if (
+            currentRenderedIndex === session.currentQuestionIndex &&
+            reviewingIndex !== session.currentQuestionIndex && Date.now() >= answerEndTime(session)
+          ) {
+            await showReview(session.currentQuestionIndex, phaseToken, session);
+          }
+        }
+      } catch (error) {
+        elements.feedbackIcon.textContent = "!";
+        elements.feedbackTitle.textContent = "ルームとの同期に失敗しました";
+        elements.feedbackText.textContent = error.message;
+      } finally {
+        syncing = false;
+      }
+    }
+
+    try {
+      await createAttemptIfNeeded();
+      currentSession = await requestApi(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+        headers: bearerHeaders(auth)
+      });
+      elements.total.textContent = String(currentSession.questionCount);
+      await syncSession();
+    } catch (error) {
+      elements.feedbackTitle.textContent = "ルームのクイズを開始できませんでした";
+      elements.feedbackText.textContent = error.message;
+      return;
+    }
+
+    if (!finished) {
+      connectRoomSocket(auth, (event) => {
+        if (
+          event.type === "question_started" || event.type === "question_ended" ||
+          event.type === "all_questions_done"
+        ) {
+          void syncSession();
+        }
+      });
+      syncTimer = globalThis.setInterval(() => void syncSession(), 2_000);
+    }
+  }
+
   async function initQuiz() {
     if (!requirePlayer()) return;
 
@@ -567,6 +1175,17 @@
     } catch (error) {
       elements.feedbackTitle.textContent = "問題を読み込めませんでした";
       elements.feedbackText.textContent = error.message;
+      return;
+    }
+
+    if (state.room.sessionId) {
+      const roomAuth = loadRoomAuth(state.room.code);
+      if (!roomAuth) {
+        elements.feedbackTitle.textContent = "ルームの参加情報がありません";
+        elements.feedbackText.textContent = "トップ画面から招待コードを入力して入り直してください。";
+        return;
+      }
+      await initMultiplayerQuiz(elements, roomAuth);
       return;
     }
 
@@ -1034,6 +1653,40 @@
     addResultSparkles(document.querySelector("#result-sparkles"));
     renderRadar(document.querySelector("#result-radar"));
 
+    const auth = state.room.sessionId ? loadRoomAuth(state.room.code) : null;
+    const crewResults = document.querySelector("#crew-results");
+    const crewResultsStatus = document.querySelector("#crew-results-status");
+    const crewResultsList = document.querySelector("#crew-results-list");
+    if (auth && crewResults && crewResultsStatus && crewResultsList) {
+      crewResults.hidden = false;
+      void requestApi(
+        `/api/sessions/${encodeURIComponent(state.room.sessionId)}/results`,
+        { headers: bearerHeaders(auth) }
+      ).then((results) => {
+        crewResultsList.replaceChildren();
+        results.participants.forEach((participant) => {
+          const item = document.createElement("li");
+          if (participant.participantId === auth.participantId) item.classList.add("is-you");
+
+          const name = document.createElement("span");
+          name.className = "crew-results-name";
+          name.textContent = participant.displayName;
+          const detail = document.createElement("span");
+          detail.className = "crew-results-detail";
+          detail.textContent = `${participant.correctCount}/${results.questionCount}問正解`;
+          const score = document.createElement("strong");
+          score.className = "crew-results-score";
+          score.textContent = `${participant.power}%`;
+          item.append(name, detail, score);
+          crewResultsList.append(item);
+        });
+        crewResultsStatus.hidden = results.participants.length > 0;
+        if (!results.participants.length) crewResultsStatus.textContent = "共有結果はありません。";
+      }).catch((error) => {
+        crewResultsStatus.textContent = `共有結果を読み込めませんでした。${error.message}`;
+      });
+    }
+
     const cardLink = document.querySelector("#card-link");
     setStateLink(cardLink, "./card.html", state);
     cardLink.addEventListener("click", (event) => {
@@ -1343,6 +1996,11 @@
     getFlightRank,
     ranks: FLIGHT_RANKS
   });
+
+  if (["rocket", "result", "card"].includes(page) && state.room.sessionId) {
+    const roomAuth = loadRoomAuth(state.room.code);
+    if (roomAuth) connectRoomSocket(roomAuth);
+  }
 
   if (page === "home") initHome();
   else if (page === "room") initRoom();

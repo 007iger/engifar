@@ -1,4 +1,4 @@
-import type { GameRepository, ParticipantSummary } from "./types.ts";
+import type { GameRepository, GameSessionSummary, ParticipantSummary } from "./types.ts";
 
 // 部屋ごとのWebSocket接続を管理し、リアルタイム配信を担当するモジュール。
 // 認証はGameRepository.authenticateParticipantに委譲する(DB層の詳細はここでは知らない)。
@@ -12,8 +12,14 @@ export type WsEvent =
   }
   | { type: "player_left"; participantId: string }
   | { type: "field_selected"; genre: string }
-  | { type: "host_started" }
-  | { type: "question_started"; questionIndex: number; timeLimitSeconds: number }
+  | { type: "host_started"; session: GameSessionSummary }
+  | {
+    type: "question_started";
+    sessionId: string;
+    questionIndex: number;
+    timeLimitSeconds: number;
+    questionStartedAt: string | null;
+  }
   | { type: "question_ended"; questionIndex: number }
   | { type: "all_questions_done" }
   | { type: "launch_ready"; categoryScores: Record<string, number> };
@@ -21,6 +27,7 @@ export type WsEvent =
 // 接続はroomId(内部ID)で管理する。REST API側(app.ts)もGameSessionSummary.roomIdなどを
 // 使って同じ部屋を指すので、roomCode(見た目の部屋コード)ではなくroomIdで揃えている。
 const roomConnections = new Map<string, Set<WebSocket>>();
+const participantConnections = new Map<string, Set<WebSocket>>();
 
 interface ConnectionInfo {
   roomId: string;
@@ -31,11 +38,28 @@ interface ConnectionInfo {
 // ハートビート(離脱検知)用に、接続ごとの「最後に何か受信した時刻」を覚えておく。
 const connectionInfo = new Map<WebSocket, ConnectionInfo>();
 
+interface PendingDisconnect {
+  timeoutId: ReturnType<typeof setTimeout>;
+  repository: GameRepository;
+  info: ConnectionInfo;
+}
+
+const pendingDisconnects = new Map<string, PendingDisconnect>();
+
 function roomSet(roomId: string): Set<WebSocket> {
   let set = roomConnections.get(roomId);
   if (!set) {
     set = new Set();
     roomConnections.set(roomId, set);
+  }
+  return set;
+}
+
+function participantSet(participantId: string): Set<WebSocket> {
+  let set = participantConnections.get(participantId);
+  if (!set) {
+    set = new Set();
+    participantConnections.set(participantId, set);
   }
   return set;
 }
@@ -52,20 +76,45 @@ export function broadcast(roomId: string, event: WsEvent): void {
 
 /**
  * 切断(正常なWebSocketクローズ、またはハートビート切れ)を処理する共通処理。
- * DB上でも離脱済みにし、まだ離脱扱いになっていなければ player_left を配信する。
+ * 画面遷移による短い切断を許容し、猶予内に再接続されなかった場合だけDB上でも離脱済みにする。
  */
-async function handleDisconnect(
+function cancelPendingDisconnect(participantId: string): void {
+  const pending = pendingDisconnects.get(participantId);
+  if (!pending) return;
+  clearTimeout(pending.timeoutId);
+  pendingDisconnects.delete(participantId);
+}
+
+async function finalizeDisconnect(participantId: string): Promise<void> {
+  const pending = pendingDisconnects.get(participantId);
+  if (!pending) return;
+  pendingDisconnects.delete(participantId);
+  if (participantConnections.get(participantId)?.size) return;
+
+  const result = await pending.repository.markParticipantDisconnected(participantId);
+  if (result) {
+    broadcast(pending.info.roomId, { type: "player_left", participantId });
+  }
+}
+
+function handleSocketClosed(
   repository: GameRepository,
   socket: WebSocket,
   info: ConnectionInfo,
-): Promise<void> {
+): void {
   roomConnections.get(info.roomId)?.delete(socket);
   connectionInfo.delete(socket);
+  const connections = participantConnections.get(info.participantId);
+  connections?.delete(socket);
+  if (connections?.size) return;
+  participantConnections.delete(info.participantId);
 
-  const result = await repository.markParticipantDisconnected(info.participantId);
-  if (result) {
-    broadcast(info.roomId, { type: "player_left", participantId: info.participantId });
-  }
+  cancelPendingDisconnect(info.participantId);
+  const timeoutId = setTimeout(
+    () => void finalizeDisconnect(info.participantId),
+    disconnectGraceMs,
+  );
+  pendingDisconnects.set(info.participantId, { timeoutId, repository, info });
 }
 
 /**
@@ -92,7 +141,9 @@ export async function handleWsUpgrade(
   const connections = roomSet(roomId);
 
   socket.onopen = () => {
+    cancelPendingDisconnect(participant.id);
     connections.add(socket);
+    participantSet(participant.id).add(socket);
     connectionInfo.set(socket, { roomId, participantId: participant.id, lastSeenAt: Date.now() });
   };
 
@@ -106,7 +157,7 @@ export async function handleWsUpgrade(
     // ハートビート検知側が先に処理済み(connectionInfoから削除済み)なら、ここでは何もしない。
     const info = connectionInfo.get(socket);
     if (!info) return;
-    handleDisconnect(repository, socket, info);
+    handleSocketClosed(repository, socket, info);
   };
 
   return response;
@@ -117,24 +168,28 @@ export async function handleWsUpgrade(
 
 const DEFAULT_HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 12_000;
+const DEFAULT_DISCONNECT_GRACE_MS = 8_000;
 
 let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+let disconnectGraceMs = DEFAULT_DISCONNECT_GRACE_MS;
 
 /**
  * 一定時間(デフォルト12秒)何も受信していない接続を切断とみなすチェックを開始する。
- * サーバー起動時に1回呼ぶ想定。intervalMs/timeoutMsはテストから短い値を渡せるようにしている。
+ * サーバー起動時に1回呼ぶ想定。各時間はテストから短い値を渡せるようにしている。
  */
 export function startHeartbeatMonitor(
   repository: GameRepository,
   intervalMs: number = DEFAULT_HEARTBEAT_CHECK_INTERVAL_MS,
   timeoutMs: number = DEFAULT_HEARTBEAT_TIMEOUT_MS,
+  graceMs: number = DEFAULT_DISCONNECT_GRACE_MS,
 ): void {
   stopHeartbeatMonitor();
+  disconnectGraceMs = graceMs;
   heartbeatTimer = setInterval(() => {
     const now = Date.now();
     for (const [socket, info] of connectionInfo) {
       if (now - info.lastSeenAt > timeoutMs) {
-        handleDisconnect(repository, socket, info);
+        handleSocketClosed(repository, socket, info);
         try {
           socket.close();
         } catch {

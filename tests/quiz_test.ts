@@ -53,9 +53,22 @@ Deno.test("quiz progress tokens enforce question order and signatures", async ()
   assert.equal(secondResult.correct, true);
   assert.equal(secondResult.correctOption, 3);
 
-  const tampered = `${attempt.progressToken.slice(0, -1)}x`;
+  const replacement = attempt.progressToken.endsWith("x") ? "y" : "x";
+  const tampered = `${attempt.progressToken.slice(0, -1)}${replacement}`;
   await assert.rejects(
     () => quiz.startQuestion(0, tampered),
     (error) => assertApiError(error, "INVALID_QUIZ_TOKEN"),
   );
+});
+
+Deno.test("shared result scoring includes unanswered questions", () => {
+  const quiz = createQuizService({ secret: SECRET });
+  const perfect = quiz.scoreAnswers(2, [0, 3]);
+  const partial = quiz.scoreAnswers(2, [0, null]);
+
+  assert.equal(perfect.correctCount, 2);
+  assert.equal(perfect.power, 100);
+  assert.equal(partial.answeredCount, 1);
+  assert.equal(partial.correctCount, 1);
+  assert.equal(partial.power, 50);
 });
