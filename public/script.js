@@ -11,6 +11,8 @@ import {
   decorateCrewAvatars,
   renderRoomAvatarField,
 } from "./crew-avatars.js";
+import { createQuizCrewReaction } from "./quiz-crew-reaction.js";
+import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
 
 (() => {
   "use strict";
@@ -975,6 +977,7 @@ import {
       persist(state);
 
       if (showFeedback) {
+        elements.crewReaction.setState(result.correct ? "correct" : "incorrect");
         if (result.correct) launchRoomCorrectConfetti();
         [...elements.answers.children].forEach((button, answerIndex) => {
           button.disabled = true;
@@ -1065,6 +1068,7 @@ import {
       document.querySelectorAll(".correct-confetti").forEach((effect) => effect.remove());
 
       elements.card.dataset.mode = "answer";
+      elements.crewReaction.setState("waiting");
       elements.feedbackIcon.textContent = "✦";
       elements.feedbackTitle.textContent = "問題を読み込んでいます";
       elements.feedbackText.textContent = "ルームの進行と同期しています。";
@@ -1093,7 +1097,7 @@ import {
         elements.progress.style.width = `${((index + 1) / quizConfig.questionCount) * 100}%`;
         elements.timerLabel.textContent = "回答";
         elements.instruction.textContent = question.instruction;
-        elements.question.textContent = question.question;
+        renderHighlightedQuizCode(elements.question, question.question);
         elements.feedbackIcon.textContent = "✦";
         elements.feedbackTitle.textContent = "仲間と同じ問題に挑戦中です";
         elements.feedbackText.textContent = "選んだ答えはルームへ送信され、時間内なら変更できます。";
@@ -1295,7 +1299,11 @@ import {
       feedbackIcon: document.querySelector("#feedback-icon"),
       feedbackTitle: document.querySelector("#feedback-title"),
       feedbackText: document.querySelector("#feedback-text"),
-      reviewCount: document.querySelector("#review-count")
+      reviewCount: document.querySelector("#review-count"),
+      crewReaction: createQuizCrewReaction(document.querySelector("#quiz-crew-reaction"), {
+        color: state.player.color,
+        name: state.player.name,
+      }),
     };
 
     elements.avatar.style.setProperty("--crew-color", state.player.color);
@@ -1443,6 +1451,7 @@ import {
       if (token !== phaseToken) return;
 
       const isCorrect = result.correct;
+      elements.crewReaction.setState(isCorrect ? "correct" : "incorrect");
       if (isCorrect) launchCorrectConfetti();
       state.quiz.answers[questionIndex] = selectedChoice;
       state.quiz.records[questionIndex] = {
@@ -1497,6 +1506,7 @@ import {
       cancelClock();
 
       elements.card.dataset.mode = "answer";
+      elements.crewReaction.setState("waiting");
       elements.feedbackIcon.textContent = "✦";
       elements.feedbackTitle.textContent = "問題を読み込んでいます";
       elements.feedbackText.textContent = "少し待ってください。";
@@ -1527,7 +1537,7 @@ import {
       elements.timerValue.textContent = String(start.answerTimeSeconds);
       elements.timer.style.setProperty("--timer-progress", "1");
       elements.instruction.textContent = question.instruction;
-      elements.question.textContent = question.question;
+      renderHighlightedQuizCode(elements.question, question.question);
       elements.feedbackIcon.textContent = "✦";
       elements.feedbackTitle.textContent = `${start.answerTimeSeconds}秒間は何度でも回答を変更できます`;
       elements.feedbackText.textContent = "選んだ答えはオレンジ色で表示されます。";

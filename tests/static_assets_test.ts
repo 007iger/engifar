@@ -139,12 +139,46 @@ Deno.test("result views are split and code questions preserve readable indentati
 
   for (const page of ["index", "room", "quiz", "rocket", "result", "card"]) {
     const html = await Deno.readTextFile(`public/${page}.html`);
-    assert.match(html, /script\.js\?v=20260826-result-split/);
+    assert.match(html, /script\.js\?v=20260826-quiz-syntax/);
   }
   for (const page of ["index", "room", "quiz", "result", "card"]) {
     const html = await Deno.readTextFile(`public/${page}.html`);
-    assert.match(html, /style\.css\?v=20260826-result-split/);
+    assert.match(html, /style\.css\?v=20260826-quiz-syntax/);
   }
+});
+
+Deno.test("quiz crew reacts to waiting and answer results without taking layout space", async () => {
+  const source = await Deno.readTextFile("public/script.js");
+  const reactionSource = await Deno.readTextFile("public/quiz-crew-reaction.js");
+  const reactionStyle = await Deno.readTextFile("public/quiz-crew-reaction.css");
+  const quizHtml = await Deno.readTextFile("public/quiz.html");
+
+  assert.match(quizHtml, /id="quiz-crew-reaction"/);
+  assert.match(quizHtml, /quiz-crew-reaction\.css\?v=20260826-quiz-syntax/);
+  assert.match(source, /createQuizCrewReaction/);
+  assert.match(source, /crewReaction\.setState\("waiting"\)/);
+  assert.match(source, /crewReaction\.setState\(result\.correct \? "correct" : "incorrect"\)/);
+  assert.match(source, /crewReaction\.setState\(isCorrect \? "correct" : "incorrect"\)/);
+  assert.match(reactionSource, /svg\.removeAttribute\("data-state"\)/);
+  assert.match(reactionStyle, /\.quiz-crew-reaction\s*\{[\s\S]*?position: absolute;/);
+  assert.match(reactionStyle, /\.quiz-crew\[data-state="correct"\]/);
+  assert.match(reactionStyle, /\.quiz-crew\[data-state="incorrect"\]/);
+  assert.match(reactionStyle, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+Deno.test("quiz code highlights syntax and strongly marks the blank", async () => {
+  const source = await Deno.readTextFile("public/script.js");
+  const highlighter = await Deno.readTextFile("public/quiz-syntax-highlight.js");
+  const style = await Deno.readTextFile("public/style.css");
+
+  assert.match(source, /renderHighlightedQuizCode\(elements\.question, question\.question\)/);
+  assert.match(highlighter, /document\.createTextNode\(token\.text\)/);
+  assert.doesNotMatch(highlighter, /innerHTML/);
+  assert.match(highlighter, /span\.setAttribute\("aria-label", "空欄"\)/);
+  assert.match(
+    style,
+    /\.quiz-syntax-token--blank\s*\{[\s\S]*?border-bottom: 2px solid var\(--lime\);[\s\S]*?box-shadow:/,
+  );
 });
 
 Deno.test("static pages include baseline browser security headers", async () => {

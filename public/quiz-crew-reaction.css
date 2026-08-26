@@ -1,0 +1,623 @@
+/* Quiz crew reaction, adapted from the mascotAni waiting/correct/incorrect motions. */
+.quiz-card {
+  position: relative;
+}
+
+.quiz-crew-reaction {
+  --crew-color: #54d37c;
+  position: absolute;
+  z-index: 4;
+  right: -118px;
+  bottom: 2px;
+  display: grid;
+  justify-items: center;
+  width: 112px;
+  pointer-events: none;
+  filter: drop-shadow(0 14px 18px rgba(0, 0, 0, .34));
+}
+
+.quiz-crew-reaction::before {
+  position: absolute;
+  z-index: -1;
+  right: 3px;
+  bottom: 0;
+  width: 94px;
+  height: 94px;
+  border: 1px dashed rgba(98, 228, 236, .13);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(31, 89, 99, .25), transparent 67%);
+  content: "";
+}
+
+.quiz-crew-reaction__label {
+  position: relative;
+  z-index: 2;
+  min-width: 66px;
+  margin-bottom: -8px;
+  padding: 5px 9px;
+  border: 1px solid rgba(98, 228, 236, .28);
+  border-radius: 999px;
+  color: var(--cyan);
+  background: rgba(7, 20, 36, .92);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, .3);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.quiz-crew-reaction[data-state="correct"] .quiz-crew-reaction__label {
+  border-color: rgba(201, 247, 101, .46);
+  color: var(--lime);
+}
+
+.quiz-crew-reaction[data-state="incorrect"] .quiz-crew-reaction__label {
+  border-color: rgba(255, 155, 85, .42);
+  color: var(--orange-bright);
+}
+
+.quiz-crew {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.quiz-crew__pose {
+  transform-box: view-box;
+  transform-origin: 48px 84px;
+}
+
+.quiz-crew__antenna {
+  transform-box: view-box;
+  transform-origin: 48px 26px;
+}
+
+.quiz-crew__eyes {
+  transform-box: view-box;
+  transform-origin: 48px 54px;
+}
+
+.quiz-crew__eye {
+  fill: #203945;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.quiz-crew__shadow {
+  fill: var(--crew-color);
+  opacity: .28;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.quiz-crew__body {
+  fill: var(--crew-color);
+  stroke: color-mix(in srgb, var(--crew-color) 44%, white);
+  stroke-opacity: .55;
+  stroke-width: 2;
+}
+
+.quiz-crew__body-highlight {
+  fill: none;
+  stroke: #fff;
+  stroke-linecap: round;
+  stroke-opacity: .19;
+  stroke-width: 4;
+}
+
+.quiz-crew__visor {
+  fill: #effaf5;
+}
+
+.quiz-crew__visor-shade {
+  fill: none;
+  stroke: #14343f;
+  stroke-linecap: round;
+  stroke-opacity: .1;
+  stroke-width: 2;
+}
+
+.quiz-crew__happy-eyes path,
+.quiz-crew__worried-brows path {
+  fill: none;
+  stroke: #203945;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.quiz-crew__happy-eyes,
+.quiz-crew__worried-brows,
+.quiz-crew__cheeks,
+.quiz-crew__tear,
+.quiz-crew__celebration {
+  opacity: 0;
+}
+
+.quiz-crew__happy-eyes path {
+  stroke-width: 2.2;
+}
+
+.quiz-crew__worried-brows path {
+  stroke-width: 1.5;
+}
+
+.quiz-crew__cheeks {
+  fill: color-mix(in srgb, var(--crew-color) 46%, #fff);
+}
+
+.quiz-crew__tear {
+  fill: #62d8ee;
+  transform-box: fill-box;
+  transform-origin: center top;
+}
+
+.quiz-crew__spark {
+  fill: none;
+  stroke: #f9df70;
+  stroke-linecap: round;
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.quiz-crew__confetti {
+  fill: #92f0ed;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.quiz-crew[data-state="waiting"] .quiz-crew__pose {
+  animation: quiz-crew-wait-tilt 7.2s ease-in-out infinite;
+}
+
+.quiz-crew[data-state="waiting"] .quiz-crew__eyes {
+  animation: quiz-crew-wait-look 7.2s ease-in-out infinite;
+}
+
+.quiz-crew[data-state="waiting"] .quiz-crew__eye {
+  animation: quiz-crew-blink 6.4s linear .65s infinite;
+}
+
+.quiz-crew[data-state="correct"] .quiz-crew__pose {
+  animation: quiz-crew-happy-hop 1.65s cubic-bezier(.2, .72, .22, 1) both;
+}
+
+.quiz-crew[data-state="correct"] .quiz-crew__shadow {
+  animation: quiz-crew-happy-shadow 1.65s ease-out both;
+}
+
+.quiz-crew[data-state="correct"] .quiz-crew__antenna {
+  animation: quiz-crew-happy-antenna 1.65s ease-out both;
+}
+
+.quiz-crew[data-state="correct"] .quiz-crew__eyes {
+  opacity: 0;
+}
+
+.quiz-crew[data-state="correct"] .quiz-crew__happy-eyes,
+.quiz-crew[data-state="correct"] .quiz-crew__cheeks,
+.quiz-crew[data-state="correct"] .quiz-crew__celebration {
+  opacity: 1;
+}
+
+.quiz-crew[data-state="correct"] .quiz-crew__spark,
+.quiz-crew[data-state="correct"] .quiz-crew__confetti {
+  animation: quiz-crew-spark-pop 1.65s ease-out both;
+}
+
+.quiz-crew[data-state="correct"] .quiz-crew__spark--two,
+.quiz-crew[data-state="correct"] .quiz-crew__confetti--one {
+  animation-delay: 80ms;
+}
+
+.quiz-crew[data-state="correct"] .quiz-crew__spark--three,
+.quiz-crew[data-state="correct"] .quiz-crew__confetti--two {
+  animation-delay: 150ms;
+}
+
+.quiz-crew[data-state="incorrect"] .quiz-crew__pose {
+  animation: quiz-crew-slump .9s cubic-bezier(.2, .75, .3, 1) both;
+}
+
+.quiz-crew[data-state="incorrect"] .quiz-crew__antenna {
+  animation: quiz-crew-antenna-droop .9s ease-out both;
+}
+
+.quiz-crew[data-state="incorrect"] .quiz-crew__eyes {
+  animation: quiz-crew-eyes-down .9s ease-out both;
+}
+
+.quiz-crew[data-state="incorrect"] .quiz-crew__eye {
+  transform: scaleY(.72);
+}
+
+.quiz-crew[data-state="incorrect"] .quiz-crew__worried-brows {
+  opacity: .88;
+}
+
+.quiz-crew[data-state="incorrect"] .quiz-crew__tear {
+  animation: quiz-crew-tear-drop 1.15s ease-in .42s both;
+}
+
+.quiz-crew[data-state="incorrect"] .quiz-crew__shadow {
+  animation: quiz-crew-sad-shadow .9s ease-out both;
+}
+
+@keyframes quiz-crew-wait-tilt {
+  0%,
+  7%,
+  32%,
+  62%,
+  90%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  15%,
+  24% {
+    transform: rotate(-4deg) translateY(.4px);
+  }
+  44%,
+  54% {
+    transform: rotate(4deg) translateY(.4px);
+  }
+  73%,
+  81% {
+    transform: rotate(-2deg) translateY(.2px);
+  }
+}
+
+@keyframes quiz-crew-wait-look {
+  0%,
+  8%,
+  30%,
+  43%,
+  65%,
+  100% {
+    transform: translate(0, 0);
+  }
+  14%,
+  24% {
+    transform: translate(-2px, .35px);
+  }
+  49%,
+  59% {
+    transform: translate(2px, .35px);
+  }
+  74%,
+  83% {
+    transform: translate(1px, -.55px);
+  }
+}
+
+@keyframes quiz-crew-blink {
+  0%,
+  38%,
+  40.5%,
+  43%,
+  100% {
+    transform: scaleY(1);
+  }
+  39.25%,
+  41.75% {
+    transform: scaleY(.08);
+  }
+}
+
+@keyframes quiz-crew-happy-hop {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0) scale(1);
+  }
+  7% {
+    transform: translateY(1.5px) rotate(0) scale(1.055, .93);
+  }
+  20% {
+    transform: translateY(-9px) rotate(-2.5deg) scale(.97, 1.035);
+  }
+  28% {
+    transform: translateY(-10px) rotate(2.5deg) scale(.98, 1.025);
+  }
+  38% {
+    transform: translateY(0) rotate(0) scale(1.065, .92);
+  }
+  46% {
+    transform: translateY(0) rotate(0) scale(1);
+  }
+  53% {
+    transform: translateY(1px) rotate(0) scale(1.04, .95);
+  }
+  65% {
+    transform: translateY(-6.5px) rotate(1.8deg) scale(.985, 1.02);
+  }
+  73% {
+    transform: translateY(-6px) rotate(-1.4deg) scale(.99, 1.015);
+  }
+  83% {
+    transform: translateY(0) rotate(0) scale(1.045, .95);
+  }
+  91% {
+    transform: translateY(0) rotate(0) scale(1);
+  }
+}
+
+@keyframes quiz-crew-happy-shadow {
+  0%,
+  46%,
+  100% {
+    opacity: .28;
+    transform: scaleX(1);
+  }
+  7%,
+  38%,
+  53%,
+  83% {
+    opacity: .32;
+    transform: scaleX(1.1);
+  }
+  23%,
+  29% {
+    opacity: .12;
+    transform: scaleX(.62);
+  }
+  66%,
+  74% {
+    opacity: .16;
+    transform: scaleX(.72);
+  }
+}
+
+@keyframes quiz-crew-happy-antenna {
+  0%,
+  8%,
+  46%,
+  53%,
+  91%,
+  100% {
+    transform: rotate(0);
+  }
+  20% {
+    transform: rotate(8deg);
+  }
+  30% {
+    transform: rotate(-9deg);
+  }
+  38% {
+    transform: rotate(5deg);
+  }
+  65% {
+    transform: rotate(-6deg);
+  }
+  75% {
+    transform: rotate(6deg);
+  }
+  83% {
+    transform: rotate(-3deg);
+  }
+}
+
+@keyframes quiz-crew-spark-pop {
+  0%,
+  8% {
+    opacity: 0;
+    transform: scale(.2) rotate(-20deg);
+  }
+  24%,
+  62% {
+    opacity: 1;
+    transform: scale(1) rotate(8deg);
+  }
+  84%,
+  100% {
+    opacity: 0;
+    transform: scale(.55) rotate(24deg);
+  }
+}
+
+@keyframes quiz-crew-slump {
+  0% {
+    transform: translateY(0) rotate(0) scale(1);
+  }
+  16% {
+    transform: translateY(-1px) rotate(-1deg) scale(1);
+  }
+  43% {
+    transform: translateY(4.5px) rotate(2deg) scale(1.02, .92);
+  }
+  60% {
+    transform: translateY(3.2px) rotate(-1deg) scale(1.005, .95);
+  }
+  100% {
+    transform: translateY(4px) rotate(1deg) scale(1.01, .94);
+  }
+}
+
+@keyframes quiz-crew-antenna-droop {
+  0%,
+  20% {
+    transform: rotate(0);
+  }
+  55% {
+    transform: rotate(19deg);
+  }
+  72% {
+    transform: rotate(13deg);
+  }
+  100% {
+    transform: rotate(16deg);
+  }
+}
+
+@keyframes quiz-crew-eyes-down {
+  0%,
+  18% {
+    transform: translateY(0);
+  }
+  54% {
+    transform: translateY(2.3px);
+  }
+  72% {
+    transform: translateY(1.7px);
+  }
+  100% {
+    transform: translateY(2px);
+  }
+}
+
+@keyframes quiz-crew-tear-drop {
+  0%,
+  14% {
+    opacity: 0;
+    transform: translateY(-1px) scale(.7);
+  }
+  30% {
+    opacity: .95;
+    transform: translateY(0) scale(1);
+  }
+  82% {
+    opacity: .85;
+    transform: translateY(5px) scale(.88);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(8px) scale(.65);
+  }
+}
+
+@keyframes quiz-crew-sad-shadow {
+  from {
+    opacity: .28;
+    transform: scaleX(1);
+  }
+  to {
+    opacity: .32;
+    transform: scaleX(1.08);
+  }
+}
+
+@media (max-width: 1260px) {
+  .quiz-crew-reaction {
+    right: -90px;
+    width: 100px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .quiz-crew-reaction {
+    right: -62px;
+    width: 92px;
+  }
+
+  .feedback-bar {
+    padding-right: 38px;
+  }
+}
+
+@media (max-width: 1120px) {
+  .quiz-crew-reaction {
+    right: -18px;
+    bottom: 3px;
+    width: 78px;
+  }
+
+  .quiz-crew-reaction::before {
+    width: 68px;
+    height: 68px;
+  }
+
+  .quiz-crew-reaction__label {
+    min-width: 55px;
+    padding: 4px 7px;
+    font-size: 7px;
+  }
+
+  .feedback-bar {
+    padding-right: 66px;
+  }
+}
+
+@media (max-width: 1020px) {
+  .quiz-crew-reaction {
+    right: 3px;
+  }
+
+  .feedback-bar {
+    padding-right: 83px;
+  }
+}
+
+@media (max-width: 760px) {
+  .quiz-crew-reaction {
+    right: 2px;
+    bottom: 1px;
+    width: 62px;
+  }
+
+  .quiz-crew-reaction::before {
+    right: 1px;
+    width: 54px;
+    height: 54px;
+  }
+
+  .quiz-crew-reaction__label {
+    display: none;
+  }
+
+  .feedback-bar {
+    padding-right: 65px;
+  }
+}
+
+@media (max-height: 520px) and (min-width: 600px) {
+  .quiz-crew-reaction {
+    right: 1px;
+    bottom: -4px;
+    width: 50px;
+  }
+
+  .quiz-crew-reaction::before,
+  .quiz-crew-reaction__label {
+    display: none;
+  }
+
+  .feedback-bar {
+    padding-right: 54px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quiz-crew__pose,
+  .quiz-crew__antenna,
+  .quiz-crew__eyes,
+  .quiz-crew__eye,
+  .quiz-crew__shadow,
+  .quiz-crew__tear,
+  .quiz-crew__spark,
+  .quiz-crew__confetti {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .quiz-crew[data-state="incorrect"] .quiz-crew__pose {
+    transform: translateY(3px) scaleY(.96);
+  }
+
+  .quiz-crew[data-state="incorrect"] .quiz-crew__antenna {
+    transform: rotate(14deg);
+  }
+
+  .quiz-crew[data-state="incorrect"] .quiz-crew__eyes {
+    transform: translateY(2px);
+  }
+
+  .quiz-crew[data-state="incorrect"] .quiz-crew__shadow {
+    opacity: .32;
+    transform: scaleX(1.08);
+  }
+
+  .quiz-crew[data-state="correct"] .quiz-crew__celebration,
+  .quiz-crew[data-state="incorrect"] .quiz-crew__tear {
+    opacity: 0;
+  }
+}
