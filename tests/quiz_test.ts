@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import questionData from "../data/quiz_questions.json" with { type: "json" };
 import { ApiError } from "../src/errors.ts";
 import {
   createQuizService,
+  CURRENT_QUESTION_SET_VERSION,
   LEGACY_CHOICE_ORDER_VARIANT,
+  LEGACY_QUESTION_SET_VERSION,
+  questionSetVersionForChoiceOrder,
   safetyFromCategoryScores,
   validateQuizQuestions,
 } from "../src/quiz.ts";
@@ -41,6 +45,24 @@ function assertApiError(error: unknown, code: string): boolean {
   return true;
 }
 
+Deno.test("quiz data keeps four ten-second questions in every category", () => {
+  const questions = validateQuizQuestions(questionData);
+  const categoryCounts = questions.reduce<Record<string, number>>((counts, question) => {
+    counts[question.category] = (counts[question.category] ?? 0) + 1;
+    return counts;
+  }, {});
+
+  assert.deepEqual(categoryCounts, {
+    "フロントエンド": 4,
+    "バックエンド": 4,
+    "データベース": 4,
+    "API": 4,
+    "インフラ": 4,
+    "セキュリティ": 4,
+  });
+  assert.ok(questions.every((question) => question.answerTimeSeconds === 10));
+});
+
 Deno.test("quiz questions hide answers until the answer period ends", async () => {
   let now = 1_000;
   const quiz = createQuizService({ secret: SECRET, now: () => now });
@@ -60,7 +82,7 @@ Deno.test("quiz questions hide answers until the answer period ends", async () =
   );
 
   now += 10_000;
-  const correctOption = started.question.choices.indexOf("h1");
+  const correctOption = started.question.choices.indexOf("flex");
   const result = await quiz.gradeQuestion(0, started.questionToken, correctOption);
   assert.equal(result.correct, true);
   assert.equal(result.correctOption, correctOption);
@@ -86,10 +108,10 @@ Deno.test("quiz progress tokens enforce question order and signatures", async ()
   const secondResult = await quiz.gradeQuestion(
     1,
     second.questionToken,
-    second.question.choices.indexOf("href"),
+    second.question.choices.indexOf("preventDefault"),
   );
   assert.equal(secondResult.correct, true);
-  assert.equal(second.question.choices[secondResult.correctOption], "href");
+  assert.equal(second.question.choices[secondResult.correctOption], "preventDefault");
 
   const replacement = attempt.progressToken.endsWith("x") ? "y" : "x";
   const tampered = `${attempt.progressToken.slice(0, -1)}${replacement}`;
@@ -116,13 +138,42 @@ Deno.test("choice order is stable per room but not a question-number pattern", a
 
 Deno.test("legacy room answers keep their original choice order", async () => {
   const quiz = createQuizService({ secret: SECRET, now: () => 1_000 });
-  const score = await quiz.scoreAnswers(2, [0, 3], LEGACY_CHOICE_ORDER_VARIANT);
+  const score = await quiz.scoreAnswers(
+    2,
+    [0, 3],
+    LEGACY_CHOICE_ORDER_VARIANT,
+    LEGACY_QUESTION_SET_VERSION,
+  );
   const grade = await quiz.gradeQuestion(1, await legacyQuestionToken(1), 3);
 
   assert.equal(score.correctCount, 2);
   assert.equal(score.power, 100);
   assert.equal(grade.correct, true);
   assert.equal(grade.correctOption, 3);
+});
+
+Deno.test("existing sessions use old questions while new sessions use the replacement set", async () => {
+  let now = 1_000;
+  const quiz = createQuizService({ secret: SECRET, now: () => now });
+  const attempt = await quiz.createAttempt();
+  const current = await quiz.startQuestion(0, attempt.progressToken);
+  const legacy = await quiz.startQuestion(
+    0,
+    attempt.progressToken,
+    undefined,
+    "existing-room",
+    10,
+    questionSetVersionForChoiceOrder(2),
+  );
+
+  assert.equal(current.question.id, "frontend-flex-space-between");
+  assert.equal(legacy.question.id, "frontend-html-heading");
+  assert.equal(questionSetVersionForChoiceOrder(3), CURRENT_QUESTION_SET_VERSION);
+
+  now += 10_000;
+  const legacyAnswer = legacy.question.choices.indexOf("h1");
+  const grade = await quiz.gradeQuestion(0, legacy.questionToken, legacyAnswer);
+  assert.equal(grade.correct, true);
 });
 
 Deno.test("shared result scoring includes unanswered questions", async () => {

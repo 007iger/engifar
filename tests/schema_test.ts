@@ -59,3 +59,12 @@ Deno.test("quiz timing migration snapshots per-question times and review state",
   assert.match(migration, /ADD COLUMN question_review_started_at timestamptz/);
   assert.match(migration, /ADD COLUMN review_ends_at timestamptz/);
 });
+
+Deno.test("question set migration preserves old sessions and versions new sessions", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/006_quiz_question_set_version.sql", import.meta.url),
+  );
+
+  assert.match(migration, /ALTER COLUMN choice_order_version SET DEFAULT 3/);
+  assert.match(migration, /CHECK \(choice_order_version IN \(1, 2, 3\)\)/);
+});

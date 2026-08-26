@@ -1,3 +1,4 @@
+import legacyQuestionData from "../data/quiz_questions.v1.json" with { type: "json" };
 import questionData from "../data/quiz_questions.json" with { type: "json" };
 import { ApiError } from "./errors.ts";
 
@@ -5,6 +6,8 @@ const DEFAULT_ANSWER_TIME_SECONDS = 10;
 const DEFAULT_REVIEW_TIME_SECONDS = 5;
 const TOKEN_LIFETIME_MS = 60 * 60 * 1000;
 export const LEGACY_CHOICE_ORDER_VARIANT = "legacy-v1";
+export const LEGACY_QUESTION_SET_VERSION = 1;
+export const CURRENT_QUESTION_SET_VERSION = 2;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -74,6 +77,7 @@ interface TokenPayload {
   expiresAt: number;
   revealAt?: number;
   variantId?: string;
+  questionSetVersion?: number;
 }
 
 export interface QuizServiceOptions {
@@ -152,14 +156,34 @@ export function validateQuizQuestions(value: unknown): readonly Readonly<RawQuiz
   }));
 }
 
+const legacyQuestions = validateQuizQuestions(legacyQuestionData);
 const questions = validateQuizQuestions(questionData);
+const questionSets = new Map<number, readonly Readonly<RawQuizQuestion>[]>([
+  [LEGACY_QUESTION_SET_VERSION, legacyQuestions],
+  [CURRENT_QUESTION_SET_VERSION, questions],
+]);
 
-function questionAt(index: number): Readonly<RawQuizQuestion> {
-  const question = questions[index];
+function questionsForVersion(version: number): readonly Readonly<RawQuizQuestion>[] {
+  const selected = questionSets.get(version);
+  if (!selected) {
+    throw new ApiError(500, "QUIZ_CONFIG_MISMATCH", "Quiz question set version is unsupported");
+  }
+  return selected;
+}
+
+function questionAt(
+  index: number,
+  questionSetVersion = CURRENT_QUESTION_SET_VERSION,
+): Readonly<RawQuizQuestion> {
+  const question = questionsForVersion(questionSetVersion)[index];
   if (!question) {
     throw new ApiError(404, "QUIZ_QUESTION_NOT_FOUND", "Quiz question not found");
   }
   return question;
+}
+
+export function questionSetVersionForChoiceOrder(choiceOrderVersion: number): number {
+  return choiceOrderVersion >= 3 ? CURRENT_QUESTION_SET_VERSION : LEGACY_QUESTION_SET_VERSION;
 }
 
 function publicQuestion(
@@ -206,7 +230,10 @@ function isTokenPayload(value: unknown): value is TokenPayload {
       (typeof payload.revealAt === "number" && Number.isFinite(payload.revealAt))) &&
     (payload.variantId === undefined ||
       (typeof payload.variantId === "string" && payload.variantId.length > 0 &&
-        payload.variantId.length <= 128));
+        payload.variantId.length <= 128)) &&
+    (payload.questionSetVersion === undefined ||
+      payload.questionSetVersion === LEGACY_QUESTION_SET_VERSION ||
+      payload.questionSetVersion === CURRENT_QUESTION_SET_VERSION);
 }
 
 export class QuizService {
@@ -250,6 +277,7 @@ export class QuizService {
         type: "progress",
         attemptId: crypto.randomUUID(),
         questionIndex: 0,
+        questionSetVersion: CURRENT_QUESTION_SET_VERSION,
         expiresAt: now + TOKEN_LIFETIME_MS,
       }),
     };
@@ -261,8 +289,8 @@ export class QuizService {
     revealAt?: number,
     variantId?: string,
     answerTimeSecondsOverride?: number,
+    questionSetVersionOverride?: number,
   ): Promise<QuizQuestionStart> {
-    questionAt(index);
     const progress = await this.#verify(progressToken, "progress");
     if (progress.questionIndex !== index) {
       throw new ApiError(
@@ -273,7 +301,13 @@ export class QuizService {
     }
 
     const now = this.#now();
-    const answerTimeSeconds = answerTimeSecondsOverride ?? this.answerTimeSecondsAt(index);
+    const questionSetVersion = questionSetVersionOverride ?? progress.questionSetVersion ??
+      LEGACY_QUESTION_SET_VERSION;
+    questionAt(index, questionSetVersion);
+    const answerTimeSeconds = answerTimeSecondsOverride ??
+      (questionSetVersion === CURRENT_QUESTION_SET_VERSION
+        ? this.answerTimeSecondsAt(index)
+        : questionAt(index, questionSetVersion).answerTimeSeconds);
     if (!Number.isFinite(answerTimeSeconds) || answerTimeSeconds < 0) {
       throw new ApiError(500, "QUIZ_CONFIG_MISMATCH", "Quiz answer time is invalid");
     }
@@ -282,7 +316,7 @@ export class QuizService {
       throw new ApiError(400, "INVALID_REVEAL_TIME", "Quiz reveal time is invalid");
     }
     const questionVariantId = variantId ?? progress.attemptId;
-    const question = await this.#shuffledQuestion(index, questionVariantId);
+    const question = await this.#shuffledQuestion(index, questionVariantId, questionSetVersion);
     return {
       question: publicQuestion(index, question),
       questionToken: await this.#sign({
@@ -292,6 +326,7 @@ export class QuizService {
         revealAt: answerRevealAt,
         expiresAt: progress.expiresAt,
         variantId: questionVariantId,
+        questionSetVersion,
       }),
       answerTimeSeconds,
     };
@@ -321,14 +356,17 @@ export class QuizService {
     const question = await this.#shuffledQuestion(
       index,
       token.variantId ?? LEGACY_CHOICE_ORDER_VARIANT,
+      token.questionSetVersion ?? LEGACY_QUESTION_SET_VERSION,
     );
+    const questionSetVersion = token.questionSetVersion ?? LEGACY_QUESTION_SET_VERSION;
     const nextIndex = index + 1;
-    const nextProgressToken = nextIndex < questions.length
+    const nextProgressToken = nextIndex < questionsForVersion(questionSetVersion).length
       ? await this.#sign({
         type: "progress",
         attemptId: token.attemptId,
         questionIndex: nextIndex,
         expiresAt: token.expiresAt,
+        questionSetVersion,
       })
       : null;
 
@@ -346,9 +384,12 @@ export class QuizService {
     questionCount: number,
     selectedOptions: readonly (number | null)[],
     variantId = "shared-default",
+    questionSetVersion = CURRENT_QUESTION_SET_VERSION,
   ): Promise<QuizScore> {
+    const selectedQuestions = questionsForVersion(questionSetVersion);
     if (
-      !Number.isSafeInteger(questionCount) || questionCount < 1 || questionCount > questions.length
+      !Number.isSafeInteger(questionCount) || questionCount < 1 ||
+      questionCount > selectedQuestions.length
     ) {
       throw new ApiError(500, "QUIZ_CONFIG_MISMATCH", "Session question count is invalid");
     }
@@ -360,7 +401,7 @@ export class QuizService {
     let totalWeight = 0;
 
     for (let index = 0; index < questionCount; index += 1) {
-      const question = await this.#shuffledQuestion(index, variantId);
+      const question = await this.#shuffledQuestion(index, variantId, questionSetVersion);
       const selectedOption = Number.isInteger(selectedOptions[index])
         ? selectedOptions[index]
         : null;
@@ -392,12 +433,16 @@ export class QuizService {
     };
   }
 
-  async #shuffledQuestion(index: number, variantId: string): Promise<Readonly<RawQuizQuestion>> {
+  async #shuffledQuestion(
+    index: number,
+    variantId: string,
+    questionSetVersion = CURRENT_QUESTION_SET_VERSION,
+  ): Promise<Readonly<RawQuizQuestion>> {
     if (!variantId || variantId.length > 128) {
       throw new ApiError(400, "INVALID_QUIZ_VARIANT", "Quiz variant is invalid");
     }
 
-    const question = questionAt(index);
+    const question = questionAt(index, questionSetVersion);
     if (variantId === LEGACY_CHOICE_ORDER_VARIANT) {
       const shift = index % question.choices.length;
       return Object.freeze({
