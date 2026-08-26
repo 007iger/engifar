@@ -1,0 +1,308 @@
+[
+  {
+    "id": "infra-git-switch",
+    "category": "インフラ",
+    "weight": 1,
+    "instruction": "mainブランチへ切り替えます。空欄に入るGitコマンドを選んでください。",
+    "question": "git ＿＿＿ main",
+    "choices": [
+      "move",
+      "switch",
+      "select",
+      "branch-to"
+    ],
+    "answer": 1,
+    "explanation": "git switchはブランチを切り替えるためのコマンドです。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-git-pull",
+    "category": "インフラ",
+    "weight": 1,
+    "instruction": "リモートの最新変更を取得して現在のブランチへ取り込みます。空欄を選んでください。",
+    "question": "git ＿＿＿",
+    "choices": [
+      "pull",
+      "download",
+      "sync-all",
+      "update-remote"
+    ],
+    "answer": 0,
+    "explanation": "git pullはリモートの変更を取得し、現在のブランチへ取り込みます。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-docker-from",
+    "category": "インフラ",
+    "weight": 1,
+    "instruction": "Dockerfileでベースイメージを指定します。空欄に入る命令を選んでください。",
+    "question": "＿＿＿ denoland/deno:alpine",
+    "choices": [
+      "IMAGE",
+      "BASE",
+      "FROM",
+      "USE"
+    ],
+    "answer": 2,
+    "explanation": "DockerfileではFROMでベースイメージを指定します。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-docker-workdir",
+    "category": "インフラ",
+    "weight": 1,
+    "instruction": "コンテナ内で以降の命令を実行する作業ディレクトリを/appに設定します。空欄を選んでください。",
+    "question": "＿＿＿ /app",
+    "choices": [
+      "CD",
+      "WORKDIR",
+      "DIR",
+      "PATH"
+    ],
+    "answer": 1,
+    "explanation": "WORKDIRはDockerfile内の作業ディレクトリを設定します。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-docker-copy",
+    "category": "インフラ",
+    "weight": 1,
+    "instruction": "プロジェクトのファイルをコンテナ内の/appへコピーします。空欄に入るDockerfile命令を選んでください。",
+    "question": "＿＿＿ . /app",
+    "choices": [
+      "MOVE",
+      "ADDALL",
+      "COPY",
+      "IMPORT"
+    ],
+    "answer": 2,
+    "explanation": "COPYはホスト側のファイルをDockerイメージ内へコピーします。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-docker-expose",
+    "category": "インフラ",
+    "weight": 1,
+    "instruction": "コンテナが8000番ポートを利用することをDockerfileに記述します。空欄を選んでください。",
+    "question": "＿＿＿ 8000",
+    "choices": [
+      "PORT",
+      "OPEN",
+      "EXPOSE",
+      "LISTEN"
+    ],
+    "answer": 2,
+    "explanation": "EXPOSEはコンテナが利用するポートをDockerfile上で示します。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-compose-ports",
+    "category": "インフラ",
+    "weight": 1,
+    "instruction": "ホストの8000番ポートをコンテナの8000番ポートへ割り当てます。空欄を選んでください。",
+    "question": "services:\n  app:\n    ports:\n      - '＿＿＿'",
+    "choices": [
+      "8000->8000",
+      "8000:8000",
+      "8000/8000",
+      "8000=8000"
+    ],
+    "answer": 1,
+    "explanation": "Docker Composeのportsではホスト側:コンテナ側の形式でポートを割り当てます。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-https-port",
+    "category": "インフラ",
+    "weight": 1,
+    "instruction": "一般的なHTTPS通信で標準的に使われるポート番号を選んでください。",
+    "question": "https://example.com:＿＿＿",
+    "choices": [
+      "22",
+      "53",
+      "80",
+      "443"
+    ],
+    "answer": 3,
+    "explanation": "HTTPSでは通常443番ポートが使われます。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-dns-a-record",
+    "category": "インフラ",
+    "weight": 1,
+    "answerTimeSeconds": 15,
+    "instruction": "ドメイン名をIPv4アドレスへ対応づけます。空欄に入るDNSレコード種別を選んでください。",
+    "question": "engifar.example. IN ＿＿＿ 203.0.113.10",
+    "choices": [
+      "A",
+      "AAAA",
+      "CNAME",
+      "MX"
+    ],
+    "answer": 0,
+    "explanation": "Aレコードは、ドメイン名をIPv4アドレスへ対応づけます。",
+    "difficulty": 1
+  },
+  {
+    "id": "infra-docker-publish-port",
+    "category": "インフラ",
+    "weight": 1,
+    "answerTimeSeconds": 15,
+    "instruction": "コンテナの8000番ポートを、手元の3000番から開けるようにします。空欄に入るオプションを選んでください。",
+    "question": "docker run ＿＿＿ 3000:8000 engifar",
+    "choices": [
+      "-p",
+      "-e",
+      "-v",
+      "-i"
+    ],
+    "answer": 0,
+    "explanation": "-p ホスト側:コンテナ側 で、ポートの対応づけを指定します。",
+    "difficulty": 1
+  },
+  {
+    "id": "infra-compose-environment",
+    "category": "インフラ",
+    "weight": 2,
+    "instruction": "ホストのDATABASE_URLをコンテナの環境変数へ渡します。空欄を選んでください。",
+    "question": "services:\n  app:\n    environment:\n      DATABASE_URL: ＿＿＿",
+    "choices": [
+      "$DATABASE_URL",
+      "${DATABASE_URL}",
+      "@DATABASE_URL",
+      "env(DATABASE_URL)"
+    ],
+    "answer": 1,
+    "explanation": "Composeでは${DATABASE_URL}のように環境変数を展開できます。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-compose-depends-on",
+    "category": "インフラ",
+    "weight": 2,
+    "instruction": "appサービスがdbサービスに依存していることをComposeへ記述します。空欄を選んでください。",
+    "question": "services:\n  app:\n    ＿＿＿:\n      - db",
+    "choices": [
+      "requires",
+      "depends_on",
+      "after",
+      "needs_service"
+    ],
+    "answer": 1,
+    "explanation": "depends_onはComposeサービス間の依存関係を記述します。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-actions-push",
+    "category": "インフラ",
+    "weight": 2,
+    "instruction": "GitHub Actionsをmainへのpush時に実行します。空欄に入るキーを選んでください。",
+    "question": "name: test\n＿＿＿:\n  push:\n    branches: [main]",
+    "choices": [
+      "when",
+      "on",
+      "trigger",
+      "event"
+    ],
+    "answer": 1,
+    "explanation": "GitHub Actionsではonでワークフローを起動するイベントを指定します。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-actions-runner",
+    "category": "インフラ",
+    "weight": 2,
+    "instruction": "GitHub ActionsのjobをUbuntu環境で実行します。空欄を選んでください。",
+    "question": "jobs:\n  test:\n    runs-on: ＿＿＿",
+    "choices": [
+      "linux",
+      "ubuntu",
+      "ubuntu-latest",
+      "github-linux"
+    ],
+    "answer": 2,
+    "explanation": "ubuntu-latestはGitHub Actionsが提供するUbuntuランナーを指定します。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-dns-aaaa-record",
+    "category": "インフラ",
+    "weight": 2,
+    "instruction": "example.comを2001:db8::10というIPv6アドレスへ向けます。使うDNSレコード種別を選んでください。",
+    "question": "example.com. IN ＿＿＿ 2001:db8::10",
+    "choices": [
+      "A",
+      "AAAA",
+      "MX",
+      "TXT"
+    ],
+    "answer": 1,
+    "explanation": "AAAAレコードはホスト名をIPv6アドレスへ対応付けます。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-compose-healthcheck",
+    "category": "インフラ",
+    "weight": 3,
+    "instruction": "コンテナが正常に応答しているか定期確認する設定を追加します。空欄を選んでください。",
+    "question": "services:\n  app:\n    ＿＿＿:\n      test: ['CMD', 'curl', '-f', 'http://localhost:8000/health']",
+    "choices": [
+      "watch",
+      "probe",
+      "healthcheck",
+      "monitoring"
+    ],
+    "answer": 2,
+    "explanation": "healthcheckはコンテナの正常性を確認するための設定です。",
+    "difficulty": 3,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "infra-docker-copy-dependencies",
+    "category": "インフラ",
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "ソースを直すたびに依存のインストールをやり直さずに済むDockerfileにします。空欄で先にコピーするものを選んでください。",
+    "question": "COPY ＿＿＿ ./\nRUN npm ci\nCOPY . .",
+    "choices": [
+      "package*.json",
+      "src/",
+      ".",
+      "node_modules/"
+    ],
+    "answer": 0,
+    "explanation": "依存の定義だけ先にコピーすると、ソースを変えてもnpm ciのキャッシュが効きます。",
+    "difficulty": 3
+  },
+  {
+    "id": "infra-nginx-proxy-pass",
+    "category": "インフラ",
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "/apiへのリクエストをappコンテナの8000番ポートへ転送します。空欄に入るNginxの命令を選んでください。",
+    "question": "location /api/ {\n  ＿＿＿ http://app:8000;\n}",
+    "choices": [
+      "proxy_pass",
+      "root",
+      "server_name",
+      "listen"
+    ],
+    "answer": 0,
+    "explanation": "proxy_passは、受け取ったリクエストを指定した別のサーバーへ転送します。",
+    "difficulty": 3
+  }
+]
