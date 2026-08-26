@@ -1,3 +1,12 @@
+import apiQuestionData from "./quiz_questions/api.json" with { type: "json" };
+import backendQuestionData from "./quiz_questions/backend.json" with { type: "json" };
+import databaseQuestionData from "./quiz_questions/database.json" with { type: "json" };
+import frontendQuestionData from "./quiz_questions/frontend.json" with { type: "json" };
+import infrastructureQuestionData from "./quiz_questions/infrastructure.json" with {
+  type: "json",
+};
+import securityQuestionData from "./quiz_questions/security.json" with { type: "json" };
+
 export interface QuizQuestionSeed {
   id: string;
   category: string;
@@ -10,6 +19,15 @@ export interface QuizQuestionSeed {
   answer: number;
   explanation: string;
 }
+
+const AUTHORED_QUESTIONS_BY_CATEGORY = new Map<string, readonly QuizQuestionSeed[]>([
+  ["フロントエンド", frontendQuestionData as QuizQuestionSeed[]],
+  ["バックエンド", backendQuestionData as QuizQuestionSeed[]],
+  ["データベース", databaseQuestionData as QuizQuestionSeed[]],
+  ["API", apiQuestionData as QuizQuestionSeed[]],
+  ["インフラ", infrastructureQuestionData as QuizQuestionSeed[]],
+  ["セキュリティ", securityQuestionData as QuizQuestionSeed[]],
+]);
 
 type Concept = readonly [id: string, term: string, definition: string];
 
@@ -163,8 +181,18 @@ function difficultyAt(index: number): 1 | 2 | 3 {
 }
 
 export const QUIZ_QUESTION_BANK: readonly Readonly<QuizQuestionSeed>[] = Object.freeze(
-  CATEGORY_CONCEPTS.flatMap(([category, concepts], categoryIndex) =>
-    concepts.map(([id, term, definition], index) => {
+  CATEGORY_CONCEPTS.flatMap(([category, concepts], categoryIndex) => {
+    const authoredQuestions = AUTHORED_QUESTIONS_BY_CATEGORY.get(category);
+    if (authoredQuestions) {
+      return authoredQuestions.map((question) =>
+        Object.freeze({
+          ...question,
+          choices: Object.freeze([...question.choices]),
+        })
+      );
+    }
+
+    return concepts.map(([id, term, definition], index) => {
       const difficulty = difficultyAt(index);
       const choices = [0, 1, 2, 3].map((offset) => concepts[(index + offset) % concepts.length][2]);
       return Object.freeze({
@@ -179,6 +207,6 @@ export const QUIZ_QUESTION_BANK: readonly Readonly<QuizQuestionSeed>[] = Object.
         answer: 0,
         explanation: `${term}は、${definition}です。`,
       });
-    })
-  ),
+    });
+  }),
 );

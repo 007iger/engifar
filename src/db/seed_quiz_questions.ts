@@ -2,6 +2,8 @@ import type { Pool } from "pg";
 import { QUIZ_QUESTION_BANK } from "../../data/quiz_question_bank.ts";
 
 export async function seedQuizQuestions(pool: Pool): Promise<void> {
+  const questionIds = QUIZ_QUESTION_BANK.map((question) => question.id);
+  const categories = [...new Set(QUIZ_QUESTION_BANK.map((question) => question.category))];
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -43,6 +45,14 @@ export async function seedQuizQuestions(pool: Pool): Promise<void> {
         correct_option: question.answer,
         explanation: question.explanation,
       })))],
+    );
+    await client.query(
+      `UPDATE quiz_question
+       SET active = false, updated_at = now()
+       WHERE category = ANY($1::varchar[])
+         AND NOT (id = ANY($2::varchar[]))
+         AND active`,
+      [categories, questionIds],
     );
     await client.query("COMMIT");
   } catch (error) {

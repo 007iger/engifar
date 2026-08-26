@@ -1,4 +1,12 @@
 import assert from "node:assert/strict";
+import apiQuestionData from "../data/quiz_questions/api.json" with { type: "json" };
+import backendQuestionData from "../data/quiz_questions/backend.json" with { type: "json" };
+import databaseQuestionData from "../data/quiz_questions/database.json" with { type: "json" };
+import frontendQuestionData from "../data/quiz_questions/frontend.json" with { type: "json" };
+import infrastructureQuestionData from "../data/quiz_questions/infrastructure.json" with {
+  type: "json",
+};
+import securityQuestionData from "../data/quiz_questions/security.json" with { type: "json" };
 import questionData from "../data/quiz_questions.json" with { type: "json" };
 import { QUIZ_QUESTION_BANK } from "../data/quiz_question_bank.ts";
 import { ApiError } from "../src/errors.ts";
@@ -257,6 +265,40 @@ Deno.test("database question bank has 10 beginner, 5 intermediate, and 3 advance
   }
   assert.equal(QUIZ_QUESTION_BANK.length, 108);
 });
+
+for (
+  const [testName, category, authoredQuestionData] of [
+    ["frontend", "フロントエンド", frontendQuestionData],
+    ["backend", "バックエンド", backendQuestionData],
+    ["database", "データベース", databaseQuestionData],
+    ["API", "API", apiQuestionData],
+    ["infrastructure", "インフラ", infrastructureQuestionData],
+    ["security", "セキュリティ", securityQuestionData],
+  ] as const
+) {
+  Deno.test(`${testName} question bank uses the reviewed code fill-in questions`, () => {
+    const authoredQuestions = QUIZ_QUESTION_BANK.filter((question) =>
+      question.category === category
+    );
+
+    assert.deepEqual(
+      authoredQuestions.map((question) => question.id),
+      authoredQuestionData.map((question) => question.id),
+    );
+    assert.deepEqual(
+      authoredQuestions.map((question) => question.difficulty),
+      [...Array(10).fill(1), ...Array(5).fill(2), ...Array(3).fill(3)],
+    );
+    for (const question of authoredQuestions) {
+      assert.equal(question.weight, question.difficulty);
+      assert.equal(question.answerTimeSeconds, 15);
+      assert.equal(question.question.match(/＿＿＿/g)?.length, 1);
+      assert.equal(question.choices.length, 4);
+      assert.equal(new Set(question.choices).size, 4);
+      assert.ok(question.answer >= 0 && question.answer < question.choices.length);
+    }
+  });
+}
 
 Deno.test("database-selected questions are used for display, grading, and category scoring", async () => {
   let now = 1_000;
