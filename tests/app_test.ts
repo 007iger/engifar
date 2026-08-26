@@ -43,8 +43,11 @@ const session: GameSessionSummary = {
   questionCount: 12,
   choiceOrderVersion: 2,
   answerTimeSeconds: 15,
+  questionAnswerTimeSeconds: Array(12).fill(15),
   currentQuestionIndex: 0,
   questionStartedAt: NOW,
+  questionReviewStartedAt: null,
+  reviewEndsAt: null,
   startedAt: NOW,
   finishedAt: null,
 };
@@ -54,14 +57,17 @@ class FakeRepository implements GameRepository {
   joinedRoomCode: string | null = null;
   submittedOption: number | null = null;
   startedQuestionCount: number | null = null;
-  startedAnswerTimeSeconds: number | null = null;
+  startedAnswerTimeSeconds: readonly number[] | null = null;
+  startedDelayMs: number | null = null;
   sessionToStart: GameSessionSummary = session;
+  sessionForParticipant: GameSessionSummary = session;
   sessionResultChoiceOrderVersion = 2;
   resultRequesterParticipantId = membership.participant.id;
   resultParticipants: SessionResultSource["participants"] = [{
     participantId: membership.participant.id,
     displayName: membership.participant.displayName,
     role: membership.participant.role,
+    resultPublished: false,
     answers: [
       { questionIndex: 0, selectedOption: 0, responseTimeMs: 500 },
       { questionIndex: 1, selectedOption: 3, responseTimeMs: 700 },
@@ -114,10 +120,12 @@ class FakeRepository implements GameRepository {
     _code: string,
     _accessToken: string,
     questionCount: number,
-    answerTimeSeconds: number,
+    answerTimeSeconds: readonly number[],
+    startDelayMs: number,
   ): Promise<GameSessionSummary> {
     this.startedQuestionCount = questionCount;
     this.startedAnswerTimeSeconds = answerTimeSeconds;
+    this.startedDelayMs = startDelayMs;
     return Promise.resolve(this.sessionToStart);
   }
 
@@ -128,7 +136,7 @@ class FakeRepository implements GameRepository {
     if (accessToken !== TOKEN) {
       throw new ApiError(403, "PARTICIPANT_REQUIRED", "A valid participant token is required");
     }
-    return Promise.resolve(session);
+    return Promise.resolve(this.sessionForParticipant);
   }
 
   getSessionResultSource(
@@ -148,6 +156,20 @@ class FakeRepository implements GameRepository {
       requesterParticipantId: this.resultRequesterParticipantId,
       participants: this.resultParticipants,
     });
+  }
+
+  publishedResult: boolean | null = null;
+
+  setResultPublication(
+    _sessionId: string,
+    accessToken: string,
+    published: boolean,
+  ): Promise<{ roomId: string; published: boolean }> {
+    if (accessToken !== TOKEN) {
+      throw new ApiError(403, "RESULT_PUBLICATION_FORBIDDEN", "Invalid participant token");
+    }
+    this.publishedResult = published;
+    return Promise.resolve({ roomId: membership.room.id, published });
   }
 
   startQuestion(
@@ -173,6 +195,25 @@ class FakeRepository implements GameRepository {
       selectedOption,
       responseTimeMs: 500,
       answeredAt: NOW,
+      allParticipantsAnswered: this.allParticipantsAnsweredOnSubmit,
+    });
+  }
+
+  allParticipantsAnsweredOnSubmit = false;
+  reviewedQuestionIndexes: number[] = [];
+
+  beginQuestionReview(
+    _sessionId: string,
+    questionIndex: number,
+    reviewTimeMs: number,
+  ): Promise<GameSessionSummary | null> {
+    this.reviewedQuestionIndexes.push(questionIndex);
+    const reviewStartedAt = new Date().toISOString();
+    return Promise.resolve({
+      ...session,
+      currentQuestionIndex: questionIndex,
+      questionReviewStartedAt: reviewStartedAt,
+      reviewEndsAt: new Date(Date.parse(reviewStartedAt) + reviewTimeMs).toISOString(),
     });
   }
 
@@ -189,12 +230,6 @@ class FakeRepository implements GameRepository {
 
   completeSessionAutomatically(_sessionId: string): Promise<GameSessionSummary | null> {
     return Promise.resolve({ ...session, status: "completed", finishedAt: NOW });
-  }
-
-  allAnswered = false;
-
-  haveAllParticipantsAnswered(_sessionId: string, _questionIndex: number): Promise<boolean> {
-    return Promise.resolve(this.allAnswered);
   }
 
   disconnectedParticipantIds: string[] = [];
@@ -336,7 +371,11 @@ Deno.test("starting a room uses the quiz question count and answer time", async 
 
   assert.equal(response.status, 201);
   assert.equal(repository.startedQuestionCount, quizService.config.questionCount);
-  assert.equal(repository.startedAnswerTimeSeconds, 7);
+  assert.deepEqual(
+    repository.startedAnswerTimeSeconds,
+    Array(quizService.config.questionCount).fill(7),
+  );
+  assert.equal(repository.startedDelayMs, 3_000);
 });
 
 Deno.test("a participant can retrieve the shared room session", async () => {
@@ -376,6 +415,8 @@ Deno.test("participants can retrieve ranked shared results", async () => {
   assert.equal(results.participants[0].correctCount, expected.correctCount);
   assert.equal(results.participants[0].power, expected.power);
   assert.equal(results.participants[0].averageResponseTimeMs, 600);
+  assert.equal(results.participants[0].isRequester, true);
+  assert.equal(results.participants[0].published, false);
   assert.equal(results.personal.participantId, membership.participant.id);
   assert.equal(results.team.participantCount, 1);
   assert.equal(results.team.answeredCount, 2);
@@ -409,6 +450,7 @@ Deno.test("personal and team results are derived from all stored participant ans
       participantId: secondParticipantId,
       displayName: "未回答ユーザー",
       role: "player",
+      resultPublished: false,
       answers: [],
     },
   ];
@@ -428,6 +470,109 @@ Deno.test("personal and team results are derived from all stored participant ans
   assert.equal(results.team.answeredCount, 2);
   assert.equal(results.team.possibleAnswerCount, session.questionCount * 2);
   assert.equal(results.team.completionRate, 8);
+  assert.equal(results.team.detailsAvailable, false);
+  assert.equal(results.team.power, null);
+  assert.deepEqual(results.team.categoryScores, {});
+});
+
+Deno.test("other participants' results are private until they publish them", async () => {
+  const repository = new FakeRepository();
+  const secondParticipantId = "55555555-5555-4555-8555-555555555555";
+  repository.resultParticipants.push({
+    participantId: secondParticipantId,
+    displayName: "非公開ユーザー",
+    role: "player",
+    resultPublished: false,
+    answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 400 }],
+  });
+  const response = await createApp(repository)(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const results = (await response.json()).data;
+  const privateResult = results.participants.find((entry: { participantId: string }) =>
+    entry.participantId === secondParticipantId
+  );
+
+  assert.deepEqual(privateResult, {
+    participantId: secondParticipantId,
+    displayName: "非公開ユーザー",
+    role: "player",
+    isRequester: false,
+    published: false,
+  });
+});
+
+Deno.test("two-person team details become available after both participants publish", async () => {
+  const repository = new FakeRepository();
+  repository.resultParticipants[0].resultPublished = true;
+  repository.resultParticipants.push({
+    participantId: "55555555-5555-4555-8555-555555555555",
+    displayName: "公開ユーザー",
+    role: "player",
+    resultPublished: true,
+    answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 400 }],
+  });
+  const response = await createApp(repository)(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const results = (await response.json()).data;
+  const publishedResult = results.participants.find((entry: { displayName: string }) =>
+    entry.displayName === "公開ユーザー"
+  );
+
+  assert.equal(results.team.detailsAvailable, true);
+  assert.equal(typeof results.team.power, "number");
+  assert.equal(typeof publishedResult.power, "number");
+});
+
+Deno.test("team details stay private while any member has not published", async () => {
+  const repository = new FakeRepository();
+  repository.resultParticipants[0].resultPublished = true;
+  repository.resultParticipants.push(
+    {
+      participantId: "55555555-5555-4555-8555-555555555555",
+      displayName: "公開ユーザー",
+      role: "player",
+      resultPublished: true,
+      answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 400 }],
+    },
+    {
+      participantId: "66666666-6666-4666-8666-666666666666",
+      displayName: "非公開ユーザー",
+      role: "player",
+      resultPublished: false,
+      answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 500 }],
+    },
+  );
+  const response = await createApp(repository)(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const results = (await response.json()).data;
+
+  assert.equal(results.team.participantCount, 3);
+  assert.equal(results.team.detailsAvailable, false);
+  assert.equal(results.team.power, null);
+  assert.deepEqual(results.team.categoryScores, {});
+});
+
+Deno.test("participants can publish their own completed result", async () => {
+  const repository = new FakeRepository();
+  const response = await createApp(repository)(jsonRequest(
+    `/api/sessions/${SESSION_ID}/results/publication`,
+    "PUT",
+    { published: true },
+    TOKEN,
+  ));
+
+  assert.equal(response.status, 200);
+  assert.equal(repository.publishedResult, true);
+  assert.deepEqual((await response.json()).data, { published: true });
 });
 
 Deno.test("room quiz reveal time follows the shared session clock", async () => {
@@ -500,19 +645,64 @@ Deno.test("an answer is passed to the repository", async () => {
   assert.equal((await response.json()).data.responseTimeMs, 500);
 });
 
-Deno.test("全員回答済みでも解答APIは正常にレスポンスを返す", async () => {
+Deno.test("the last participant answer starts review immediately", async () => {
   const repository = new FakeRepository();
-  repository.allAnswered = true;
-  const response = await createApp(repository)(
+  repository.allParticipantsAnsweredOnSubmit = true;
+  const quizService = createQuizService({
+    secret: "early-review-test-secret-that-is-at-least-32-bytes",
+    reviewTimeSeconds: 0,
+  });
+  const response = await createApp(repository, { quizService })(
     jsonRequest(
       `/api/sessions/${SESSION_ID}/answers/0`,
       "PUT",
-      { selectedOption: 1 },
+      { selectedOption: 2 },
       TOKEN,
     ),
   );
 
   assert.equal(response.status, 200);
+  assert.deepEqual(repository.reviewedQuestionIndexes, [0]);
+});
+
+Deno.test("room grading allows an early reveal after DB review starts", async () => {
+  let now = 1_000;
+  const quizService = createQuizService({
+    secret: "early-grade-test-secret-that-is-at-least-32-bytes",
+    now: () => now,
+  });
+  const repository = new FakeRepository();
+  repository.sessionForParticipant = {
+    ...session,
+    answerTimeSeconds: 10,
+    questionStartedAt: new Date(now).toISOString(),
+  };
+  const app = createApp(repository, { quizService });
+  const attempt = (await (await app(
+    new Request("http://localhost/api/quiz/attempts", { method: "POST" }),
+  )).json()).data;
+  const start = (await (await app(jsonRequest(
+    `/api/sessions/${SESSION_ID}/quiz/questions/0/start`,
+    "POST",
+    { progressToken: attempt.progressToken },
+    TOKEN,
+  ))).json()).data;
+
+  now = 2_000;
+  repository.sessionForParticipant = {
+    ...repository.sessionForParticipant,
+    questionReviewStartedAt: new Date(now).toISOString(),
+    reviewEndsAt: new Date(now + 5_000).toISOString(),
+  };
+  const gradeResponse = await app(jsonRequest(
+    `/api/sessions/${SESSION_ID}/quiz/questions/0/grade`,
+    "POST",
+    { questionToken: start.questionToken, selectedOption: 0 },
+    TOKEN,
+  ));
+
+  assert.equal(gradeResponse.status, 200);
+  assert.equal(typeof (await gradeResponse.json()).data.correct, "boolean");
 });
 
 Deno.test("quiz API keeps the answer out of question responses", async () => {

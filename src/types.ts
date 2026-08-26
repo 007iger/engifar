@@ -37,8 +37,11 @@ export interface GameSessionSummary {
   questionCount: number;
   choiceOrderVersion: number;
   answerTimeSeconds: number;
+  questionAnswerTimeSeconds: number[];
   currentQuestionIndex: number | null;
   questionStartedAt: string | null;
+  questionReviewStartedAt: string | null;
+  reviewEndsAt: string | null;
   startedAt: string;
   finishedAt: string | null;
 }
@@ -51,6 +54,7 @@ export interface AnswerSummary {
   selectedOption: number;
   responseTimeMs: number;
   answeredAt: string;
+  allParticipantsAnswered: boolean;
 }
 
 export interface SessionResultAnswer {
@@ -63,6 +67,7 @@ export interface SessionResultParticipantSource {
   participantId: string;
   displayName: string;
   role: ParticipantRole;
+  resultPublished: boolean;
   answers: SessionResultAnswer[];
 }
 
@@ -84,6 +89,20 @@ export interface ParticipantQuizResult {
   categoryScores: Record<string, number>;
 }
 
+export interface SharedParticipantQuizResult {
+  participantId: string;
+  displayName: string;
+  role: ParticipantRole;
+  isRequester: boolean;
+  published: boolean;
+  answeredCount?: number;
+  correctCount?: number;
+  power?: number;
+  safety?: number;
+  averageResponseTimeMs?: number | null;
+  categoryScores?: Record<string, number>;
+}
+
 export interface SessionResults {
   sessionId: string;
   questionCount: number;
@@ -93,11 +112,12 @@ export interface SessionResults {
     answeredCount: number;
     possibleAnswerCount: number;
     completionRate: number;
-    power: number;
-    safety: number;
+    detailsAvailable: boolean;
+    power: number | null;
+    safety: number | null;
     categoryScores: Record<string, number>;
   };
-  participants: ParticipantQuizResult[];
+  participants: SharedParticipantQuizResult[];
 }
 
 export interface AuthenticatedParticipant {
@@ -118,7 +138,8 @@ export interface GameRepository {
     code: string,
     accessToken: string,
     questionCount: number,
-    answerTimeSeconds: number,
+    questionAnswerTimeSeconds: readonly number[],
+    startDelayMs: number,
   ): Promise<GameSessionSummary>;
   /** 参加者トークンを検証し、その参加者が所属するゲームセッションを取得する。 */
   getSessionForParticipant(
@@ -131,6 +152,12 @@ export interface GameRepository {
     sessionId: string,
     accessToken: string,
   ): Promise<SessionResultSource>;
+  /** 本人の結果をチームへ公開するかを変更する。 */
+  setResultPublication(
+    sessionId: string,
+    accessToken: string,
+    published: boolean,
+  ): Promise<{ roomId: string; published: boolean }>;
   startQuestion(
     sessionId: string,
     accessToken: string,
@@ -142,6 +169,12 @@ export interface GameRepository {
     questionIndex: number,
     selectedOption: number,
   ): Promise<AnswerSummary>;
+  /** 現在の回答受付を終了して答え合わせ期間へ移す。すでに移行済みならnull。 */
+  beginQuestionReview(
+    sessionId: string,
+    questionIndex: number,
+    reviewTimeMs: number,
+  ): Promise<GameSessionSummary | null>;
   completeSession(sessionId: string, accessToken: string): Promise<GameSessionSummary>;
 
   /**
@@ -155,9 +188,6 @@ export interface GameRepository {
   ): Promise<GameSessionSummary | null>;
   /** サーバー主導の進行ループ専用(トークン不要)。最後の問題が終わった時にセッションを完了させる。 */
   completeSessionAutomatically(sessionId: string): Promise<GameSessionSummary | null>;
-
-  /** そのセッションにまだ残っている参加者全員が、指定した問題に回答済みかどうか。 */
-  haveAllParticipantsAnswered(sessionId: string, questionIndex: number): Promise<boolean>;
 
   /**
    * WebSocketの切断(正常切断・ハートビート切れの両方)を検知した時に呼ぶ。

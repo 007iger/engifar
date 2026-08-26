@@ -11,6 +11,7 @@ import {
 } from "./quiz.ts";
 
 const MAX_JSON_BODY_BYTES = 16 * 1024;
+const FIRST_QUESTION_START_DELAY_MS = 3_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SECURITY_HEADERS = Object.freeze({
   "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
@@ -135,6 +136,13 @@ function selectedOptionFrom(body: JsonRecord): number {
   return option;
 }
 
+function publishedFrom(body: JsonRecord): boolean {
+  if (typeof body.published !== "boolean") {
+    throw new ApiError(400, "INVALID_PUBLICATION", "published must be a boolean");
+  }
+  return body.published;
+}
+
 function quizTokenFrom(body: JsonRecord, key: "progressToken" | "questionToken"): string {
   const token = body[key];
   if (typeof token !== "string" || token.length < 20 || token.length > 4096) {
@@ -203,6 +211,18 @@ function questionIndex(rawIndex: string): number {
 
 function choiceOrderVariant(session: { id: string; choiceOrderVersion: number }): string {
   return session.choiceOrderVersion >= 2 ? session.id : LEGACY_CHOICE_ORDER_VARIANT;
+}
+
+function needsQuestionTimer(session: {
+  status: string;
+  questionStartedAt: string | null;
+  reviewEndsAt: string | null;
+}): boolean {
+  if (session.status !== "active") return false;
+  if (session.reviewEndsAt) return Date.parse(session.reviewEndsAt) > Date.now();
+  return Boolean(
+    session.questionStartedAt && Date.parse(session.questionStartedAt) >= Date.now() - 1_000,
+  );
 }
 
 async function handleApi(
@@ -295,7 +315,8 @@ async function handleApi(
       roomCode(decodeURIComponent(roomSessionsMatch[1])),
       bearerToken(request),
       quizService.config.questionCount,
-      quizService.config.answerTimeSeconds,
+      quizService.config.answerTimeSecondsByQuestion,
+      FIRST_QUESTION_START_DELAY_MS,
     );
     broadcast(result.roomId, { type: "host_started", session: result });
     // startSessionの時点で1問目(index 0)がすでに開始されているので、
@@ -382,6 +403,35 @@ async function handleApi(
       0,
     );
     const possibleAnswerCount = participants.length * source.session.questionCount;
+    // Exact team averages can reveal the sole private result when every other
+    // member's score is known. Require consent from the whole multi-person team.
+    const teamDetailsAvailable = participants.length <= 1 ||
+      source.participants.every((participant) => participant.resultPublished);
+    const teamPower = participants.length
+      ? Math.round(
+        participants.reduce((sum, participant) => sum + participant.power, 0) /
+          participants.length,
+      )
+      : 0;
+    const teamSafety = safetyFromCategoryScores(Object.values(teamCategoryScores));
+    const sharedParticipants = source.participants.map((sourceParticipant) => {
+      const participant = participants.find((candidate) =>
+        candidate.participantId === sourceParticipant.participantId
+      );
+      if (!participant) {
+        throw new ApiError(500, "RESULT_PARTICIPANT_MISSING", "Participant result is missing");
+      }
+      const isRequester = participant.participantId === source.requesterParticipantId;
+      const published = sourceParticipant.resultPublished;
+      const identity = {
+        participantId: participant.participantId,
+        displayName: participant.displayName,
+        role: participant.role,
+        isRequester,
+        published,
+      };
+      return isRequester || published ? { ...identity, ...participant } : identity;
+    });
     const results: SessionResults = {
       sessionId: source.session.id,
       questionCount: source.session.questionCount,
@@ -393,29 +443,44 @@ async function handleApi(
         completionRate: possibleAnswerCount
           ? Math.round((answeredCount / possibleAnswerCount) * 100)
           : 0,
-        power: participants.length
-          ? Math.round(
-            participants.reduce((sum, participant) => sum + participant.power, 0) /
-              participants.length,
-          )
-          : 0,
-        safety: safetyFromCategoryScores(Object.values(teamCategoryScores)),
-        categoryScores: teamCategoryScores,
+        detailsAvailable: teamDetailsAvailable,
+        power: teamDetailsAvailable ? teamPower : null,
+        safety: teamDetailsAvailable ? teamSafety : null,
+        categoryScores: teamDetailsAvailable ? teamCategoryScores : {},
       },
-      participants,
+      participants: sharedParticipants,
     };
     return json({ data: results });
   }
 
+  const resultPublicationMatch = pathname.match(
+    /^\/api\/sessions\/([^/]+)\/results\/publication$/,
+  );
+  if (request.method === "PUT" && resultPublicationMatch) {
+    const body = await readJsonObject(request);
+    const result = await repository.setResultPublication(
+      sessionId(decodeURIComponent(resultPublicationMatch[1])),
+      bearerToken(request),
+      publishedFrom(body),
+    );
+    broadcast(result.roomId, {
+      type: "result_publication_changed",
+      published: result.published,
+    });
+    return json({ data: { published: result.published } });
+  }
+
   const sessionMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
   if (request.method === "GET" && sessionMatch) {
-    return json({
-      data: await repository.getSessionForParticipant(
-        sessionId(decodeURIComponent(sessionMatch[1])),
-        bearerToken(request),
-        quizService.config.reviewTimeSeconds,
-      ),
-    });
+    const result = await repository.getSessionForParticipant(
+      sessionId(decodeURIComponent(sessionMatch[1])),
+      bearerToken(request),
+      quizService.config.reviewTimeSeconds,
+    );
+    if (needsQuestionTimer(result)) {
+      scheduleQuestionAdvance(repository, result, quizService.config.reviewTimeSeconds * 1000);
+    }
+    return json({ data: result });
   }
 
   const multiplayerQuizStartMatch = pathname.match(
@@ -450,6 +515,7 @@ async function handleApi(
         quizTokenFrom(body, "progressToken"),
         revealAt,
         choiceOrderVariant(session),
+        session.answerTimeSeconds,
       ),
     });
   }
@@ -475,22 +541,58 @@ async function handleApi(
     return json({ data: result });
   }
 
+  const multiplayerQuizGradeMatch = pathname.match(
+    /^\/api\/sessions\/([^/]+)\/quiz\/questions\/([^/]+)\/grade$/,
+  );
+  if (request.method === "POST" && multiplayerQuizGradeMatch) {
+    const requestedIndex = questionIndex(multiplayerQuizGradeMatch[2]);
+    const session = await repository.getSessionForParticipant(
+      sessionId(multiplayerQuizGradeMatch[1]),
+      bearerToken(request),
+      quizService.config.reviewTimeSeconds,
+    );
+    if (session.currentQuestionIndex === null || requestedIndex > session.currentQuestionIndex) {
+      throw new ApiError(
+        409,
+        "QUESTION_NOT_AVAILABLE",
+        "This question is not available in the room session",
+      );
+    }
+    const trustedRevealAt = requestedIndex < session.currentQuestionIndex ||
+        session.status === "completed"
+      ? Date.now()
+      : session.questionReviewStartedAt
+      ? Date.parse(session.questionReviewStartedAt)
+      : undefined;
+    const body = await readJsonObject(request);
+    return json({
+      data: await quizService.gradeQuestion(
+        requestedIndex,
+        quizTokenFrom(body, "questionToken"),
+        quizSelectedOptionFrom(body),
+        trustedRevealAt,
+      ),
+    });
+  }
+
   const answerMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/answers\/([^/]+)$/);
   if (request.method === "PUT" && answerMatch) {
     const body = await readJsonObject(request);
+    const requestedSessionId = sessionId(answerMatch[1]);
+    const requestedQuestionIndex = questionIndex(answerMatch[2]);
     const result = await repository.submitAnswer(
-      sessionId(answerMatch[1]),
+      requestedSessionId,
       bearerToken(request),
-      questionIndex(answerMatch[2]),
+      requestedQuestionIndex,
       selectedOptionFrom(body),
     );
-    // 全員がこの問題に回答し終えていたら、制限時間を待たずに答え合わせへ進める。
-    const allAnswered = await repository.haveAllParticipantsAnswered(
-      result.gameSessionId,
-      result.questionIndex,
-    );
-    if (allAnswered) {
-      triggerEarlyQuestionEnd(result.gameSessionId, result.questionIndex);
+    if (result.allParticipantsAnswered) {
+      await triggerEarlyQuestionEnd(
+        repository,
+        requestedSessionId,
+        requestedQuestionIndex,
+        quizService.config.reviewTimeSeconds * 1000,
+      );
     }
     return json({ data: result });
   }

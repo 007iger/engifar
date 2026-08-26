@@ -48,6 +48,8 @@ Deno.test("quiz questions hide answers until the answer period ends", async () =
   const started = await quiz.startQuestion(0, progressToken);
 
   assert.equal(quiz.config.questionCount, 24);
+  assert.deepEqual(quiz.config.answerTimeSecondsByQuestion, Array(24).fill(10));
+  assert.equal(started.answerTimeSeconds, 10);
   assert.equal(Object.hasOwn(started.question, "answer"), false);
   assert.equal(Object.hasOwn(started.question, "correctOption"), false);
   assert.equal(Object.hasOwn(started.question, "explanation"), false);
@@ -158,6 +160,7 @@ Deno.test("quiz JSON validation rejects duplicate ids and malformed choices", ()
     id: "sample-question",
     category: "API",
     weight: 1,
+    answerTimeSeconds: 10,
     instruction: "Choose one",
     question: "Question",
     choices: ["A", "B", "C", "D"],
@@ -169,5 +172,9 @@ Deno.test("quiz JSON validation rejects duplicate ids and malformed choices", ()
   assert.throws(
     () => validateQuizQuestions([{ ...validQuestion, choices: ["A", "B"] }]),
     /four unique/,
+  );
+  assert.throws(
+    () => validateQuizQuestions([{ ...validQuestion, answerTimeSeconds: 0 }]),
+    /invalid answerTimeSeconds/,
   );
 });

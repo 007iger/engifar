@@ -22,6 +22,7 @@ export type WsEvent =
   }
   | { type: "question_ended"; questionIndex: number; reviewEndsAt: number }
   | { type: "all_questions_done" }
+  | { type: "result_publication_changed"; published: boolean }
   | { type: "launch_ready"; categoryScores: Record<string, number> };
 
 // 接続はroomId(内部ID)で管理する。REST API側(app.ts)もGameSessionSummary.roomIdなどを

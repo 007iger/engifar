@@ -67,8 +67,32 @@ Deno.test("quiz progress stays out of URLs and completed quizzes replace browser
 
   assert.doesNotMatch(source, /location\.hash|#mission=|URLSearchParams/);
   assert.match(source, /event\.persisted/);
+  assert.match(source, /goTo\("\.\/quiz-ready\.html", next\)/);
+  assert.match(source, /goTo\("\.\/rocket-build\.html", state, true\)/);
   assert.match(source, /goTo\("\.\/rocket\.html", state, true\)/);
   assert.match(source, /state\.status !== "quiz"/);
+});
+
+Deno.test("ported PR visuals use real room data and server-backed private results", async () => {
+  const source = await Deno.readTextFile("public/script.js");
+  const avatarSource = await Deno.readTextFile("public/crew-avatars.js");
+  const resultHtml = await Deno.readTextFile("public/result.html");
+
+  assert.match(source, /renderRoomAvatarField\(avatarField, fieldParticipants\)/);
+  assert.match(source, /\/results\/publication`/);
+  assert.match(source, /if \(!document\.hidden\) void refreshRoom\(\)/);
+  assert.match(source, /if \(!document\.hidden\) void syncSession\(\)/);
+  assert.match(source, /HIDDEN_SOCKET_DISCONNECT_MS = 60_000/);
+  assert.match(source, /document\.addEventListener\("visibilitychange"/);
+  assert.match(source, /socket\?\.close\(1000, "hidden-timeout"\)/);
+  assert.match(source, /全員共通の開始時刻を待っています/);
+  assert.match(source, /answer\.allParticipantsAnswered/);
+  assert.match(source, /\/quiz\/questions\/\$\{index\}\/grade/);
+  assert.doesNotMatch(source, /engifar-leaderboard|RESULT_DATA|localStorage/);
+  assert.match(avatarSource, /participant\.name/);
+  assert.doesNotMatch(avatarSource, /クルーA|クルーB|クルーC|クルーD/);
+  assert.match(resultHtml, /id="result-publish-button"/);
+  assert.match(resultHtml, /id="team-result-radar"/);
 });
 
 Deno.test("static pages include baseline browser security headers", async () => {

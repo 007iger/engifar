@@ -64,10 +64,16 @@ class FakeRepository implements GameRepository {
   getSessionResultSource(): Promise<SessionResultSource> {
     return Promise.reject(new Error("not used"));
   }
+  setResultPublication(): Promise<{ roomId: string; published: boolean }> {
+    return Promise.reject(new Error("not used"));
+  }
   startQuestion(): Promise<GameSessionSummary> {
     return Promise.reject(new Error("not used"));
   }
   submitAnswer(): Promise<AnswerSummary> {
+    return Promise.reject(new Error("not used"));
+  }
+  beginQuestionReview(): Promise<GameSessionSummary | null> {
     return Promise.reject(new Error("not used"));
   }
   completeSession(): Promise<GameSessionSummary> {
@@ -79,10 +85,6 @@ class FakeRepository implements GameRepository {
   completeSessionAutomatically(): Promise<GameSessionSummary | null> {
     return Promise.reject(new Error("not used"));
   }
-  haveAllParticipantsAnswered(): Promise<boolean> {
-    return Promise.reject(new Error("not used"));
-  }
-
   private alreadyDisconnected = new Set<string>();
 
   markParticipantDisconnected(participantId: string): Promise<{ roomId: string } | null> {

@@ -6,12 +6,18 @@ import {
   OUTPUT_THRESHOLD,
   SAFETY_THRESHOLD,
 } from "./game-rules.js";
+import {
+  decorateCrewAvatar,
+  decorateCrewAvatars,
+  renderRoomAvatarField,
+} from "./crew-avatars.js";
 
 (() => {
   "use strict";
 
   const STORAGE_KEY = "engifar-mission-v4";
   const ROOM_AUTH_STORAGE_KEY = "engifar-room-auth-v1";
+  const HIDDEN_SOCKET_DISCONNECT_MS = 60_000;
   let quizConfig = Object.freeze({ questionCount: 24, answerTimeSeconds: 10, reviewTimeSeconds: 5 });
   let authoritativeResults = null;
   const PROFILE_ROLES = Object.freeze({
@@ -28,6 +34,7 @@ import {
 
   const page = app.dataset.page || "home";
   const reducedMotion = globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  decorateCrewAvatars(app);
 
   if (page === "quiz") {
     globalThis.addEventListener("pageshow", (event) => {
@@ -118,18 +125,22 @@ import {
     let socket = null;
     let heartbeatTimer = null;
     let reconnectTimer = null;
+    let hiddenTimer = null;
     let stopped = false;
+    let disconnectedWhileHidden = false;
     let retryCount = 0;
 
     function clearTimers() {
       if (heartbeatTimer !== null) globalThis.clearInterval(heartbeatTimer);
       if (reconnectTimer !== null) globalThis.clearTimeout(reconnectTimer);
+      if (hiddenTimer !== null) globalThis.clearTimeout(hiddenTimer);
       heartbeatTimer = null;
       reconnectTimer = null;
+      hiddenTimer = null;
     }
 
     function open() {
-      if (stopped) return;
+      if (stopped || disconnectedWhileHidden) return;
       const url = new URL("/ws", globalThis.location.href);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       url.searchParams.set("roomCode", auth.roomCode);
@@ -154,7 +165,7 @@ import {
         if (heartbeatTimer !== null) globalThis.clearInterval(heartbeatTimer);
         heartbeatTimer = null;
         socket = null;
-        if (stopped) return;
+        if (stopped || disconnectedWhileHidden) return;
         onStatus("reconnecting");
         retryCount += 1;
         const delay = Math.min(5_000, 500 * 2 ** Math.min(retryCount - 1, 4));
@@ -167,10 +178,36 @@ import {
       if (stopped) return;
       stopped = true;
       clearTimers();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       socket?.close();
     }
 
+    function handleVisibilityChange() {
+      if (!document.hidden) {
+        if (hiddenTimer !== null) globalThis.clearTimeout(hiddenTimer);
+        hiddenTimer = null;
+        if (disconnectedWhileHidden) {
+          globalThis.location.replace("./index.html");
+        }
+        return;
+      }
+      if (hiddenTimer !== null || disconnectedWhileHidden || stopped) return;
+      hiddenTimer = globalThis.setTimeout(() => {
+        hiddenTimer = null;
+        if (!document.hidden || stopped) return;
+        disconnectedWhileHidden = true;
+        if (heartbeatTimer !== null) globalThis.clearInterval(heartbeatTimer);
+        if (reconnectTimer !== null) globalThis.clearTimeout(reconnectTimer);
+        heartbeatTimer = null;
+        reconnectTimer = null;
+        onStatus("disconnected");
+        socket?.close(1000, "hidden-timeout");
+      }, HIDDEN_SOCKET_DISCONNECT_MS);
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     globalThis.addEventListener("pagehide", stop, { once: true });
+    handleVisibilityChange();
     open();
     return { stop };
   }
@@ -524,18 +561,17 @@ import {
       goTo("./index.html", state, true);
       return;
     }
-    const playerAvatar = document.querySelector("#room-player-avatar");
+    const avatarField = document.querySelector("#room-avatar-field");
     const playerList = document.querySelector("#room-player-list");
     const roomCodeValue = document.querySelector("#room-code-value");
     const startButton = document.querySelector("#room-start-button");
     const lobbyMessage = document.querySelector("#room-lobby-message");
     const lobbyStatus = document.querySelector("#room-lobby-status");
     if (
-      !playerAvatar || !playerList || !roomCodeValue || !startButton || !lobbyMessage ||
+      !avatarField || !playerList || !roomCodeValue || !startButton || !lobbyMessage ||
       !lobbyStatus
     ) return;
 
-    playerAvatar.style.setProperty("--crew-color", state.player.color);
     roomCodeValue.textContent = state.room.code;
     setStateLink(document.querySelector("#room-home-link"), "./index.html", state);
 
@@ -550,6 +586,7 @@ import {
     const crewColors = ["#54d37c", "#5ca9ff", "#f5cf4b", "#ff665f", "#b889ff", "#62e4ec"];
     let enteredQuiz = false;
     let refreshing = false;
+    let avatarSignature = "";
 
     function colorFor(participant, index) {
       if (participant.id === auth.participantId) return state.player.color;
@@ -570,6 +607,7 @@ import {
         avatar.style.setProperty("--crew-color", colorFor(participant, index));
         avatar.setAttribute("aria-hidden", "true");
         avatar.append(document.createElement("i"));
+        decorateCrewAvatar(avatar);
 
         const copy = document.createElement("div");
         const role = document.createElement("small");
@@ -584,6 +622,17 @@ import {
         card.append(avatar, copy, badge);
         playerList.append(card);
       });
+      const fieldParticipants = participants.map((participant, index) => ({
+        id: participant.id,
+        name: participant.displayName,
+        color: colorFor(participant, index),
+        isYou: participant.id === auth.participantId,
+      }));
+      const nextAvatarSignature = JSON.stringify(fieldParticipants);
+      if (nextAvatarSignature !== avatarSignature) {
+        avatarSignature = nextAvatarSignature;
+        renderRoomAvatarField(avatarField, fieldParticipants);
+      }
       lobbyMessage.textContent = `${participants.length}人のクルーが参加中です。招待コードを仲間に伝えましょう。`;
     }
 
@@ -595,7 +644,7 @@ import {
       next.player = { ...state.player };
       next.room = { ...state.room, sessionId: session.id };
       next.status = "quiz";
-      goTo("./quiz.html", next);
+      goTo("./quiz-ready.html", next);
     }
 
     async function refreshRoom() {
@@ -661,14 +710,18 @@ import {
           ? "リアルタイム接続済み"
           : connectionStatus === "reconnecting"
           ? "再接続しています…"
+          : connectionStatus === "disconnected"
+          ? "長時間画面を離れたため退出しました"
           : "接続しています…";
         lobbyStatus.dataset.kind = connectionStatus === "connected" ? "connected" : "loading";
       }
     );
 
     void refreshRoom();
-    // 参加・開始通知はWebSocketで受け、15秒ごとの取得は通知を逃した場合の復旧用にする。
-    globalThis.setInterval(() => void refreshRoom(), 15_000);
+    // 参加・開始通知はWebSocketで受け、20秒ごとの取得は通知を逃した場合の復旧用にする。
+    globalThis.setInterval(() => {
+      if (!document.hidden) void refreshRoom();
+    }, 20_000);
   }
 
   function initGuide() {
@@ -839,7 +892,7 @@ import {
         if (syncTimer !== null) globalThis.clearInterval(syncTimer);
         state.outcome = null;
         state.status = "rocket";
-        goTo("./rocket.html", state, true);
+        goTo("./rocket-build.html", state, true);
       } catch (error) {
         elements.feedbackIcon.textContent = "!";
         elements.feedbackTitle.textContent = "結果を取得できませんでした";
@@ -865,15 +918,19 @@ import {
       let result;
       for (let attempt = 0; attempt < 12; attempt += 1) {
         try {
-          result = await requestApi(`/api/quiz/questions/${index}/grade`, {
+          result = await requestApi(
+            `/api/sessions/${encodeURIComponent(sessionId)}/quiz/questions/${index}/grade`,
+            {
             method: "POST",
+            headers: bearerHeaders(auth),
             body: JSON.stringify({
               questionToken,
               selectedOption: Number.isInteger(state.quiz.answers[index])
                 ? state.quiz.answers[index]
                 : null
             })
-          });
+            }
+          );
           break;
         } catch (error) {
           if (error.code !== "QUIZ_REVIEW_NOT_READY" || attempt === 11) throw error;
@@ -1044,7 +1101,10 @@ import {
                 headers: bearerHeaders(auth),
                 body: JSON.stringify({ selectedOption: choiceIndex })
               }
-            )).catch((error) => {
+            )).then((answer) => {
+              if (answer.allParticipantsAnswered) void syncSession();
+              return answer;
+            }).catch((error) => {
               if (currentRenderedIndex !== index || reviewingIndex === index) return;
               elements.feedbackIcon.textContent = "!";
               elements.feedbackTitle.textContent = "回答を送信できませんでした";
@@ -1054,17 +1114,50 @@ import {
           elements.answers.append(button);
         });
 
-        // 通常はWSのquestion_endedで即座にshowReviewへ進む。ここは、そのWS通知を
-        // 受け取れなかった場合の壁時計フォールバック(reviewEndsAtは概算値)。
-        const remainingSeconds = Math.max(0.05, (answerEndTime(session) - Date.now()) / 1000);
-        cancelClock = runClock(
-          remainingSeconds,
-          (shown, ratio) => {
-            elements.timerValue.textContent = String(shown);
-            elements.timer.style.setProperty("--timer-progress", String(ratio));
-          },
-          () => void showReview(index, token, Date.now() + quizConfig.reviewTimeSeconds * 1000)
-        );
+        const questionStartsAt = session.questionStartedAt
+          ? Date.parse(session.questionStartedAt)
+          : Date.now();
+        const beginAnswerPhase = () => {
+          if (token !== phaseToken || reviewingIndex === index) return;
+          elements.timerLabel.textContent = "回答";
+          elements.feedbackTitle.textContent = `${session.answerTimeSeconds}秒間は何度でも回答を変更できます`;
+          [...elements.answers.children].forEach((button) => button.disabled = false);
+          // 通常はWSのquestion_endedで即座にshowReviewへ進む。ここは、そのWS通知を
+          // 受け取れなかった場合の壁時計フォールバック(reviewEndsAtは概算値)。
+          const remainingSeconds = Math.max(
+            0.05,
+            (answerEndTime(session) - Date.now()) / 1000,
+          );
+          cancelClock = runClock(
+            remainingSeconds,
+            (shown, ratio) => {
+              elements.timerValue.textContent = String(shown);
+              elements.timer.style.setProperty("--timer-progress", String(ratio));
+            },
+            () =>
+              void showReview(
+                index,
+                token,
+                Date.now() + quizConfig.reviewTimeSeconds * 1000,
+              ),
+          );
+        };
+        const startsInSeconds = (questionStartsAt - Date.now()) / 1000;
+        if (startsInSeconds > 0.02) {
+          elements.timerLabel.textContent = "開始";
+          elements.feedbackTitle.textContent = "全員共通の開始時刻を待っています";
+          [...elements.answers.children].forEach((button) => button.disabled = true);
+          cancelClock = runClock(
+            startsInSeconds,
+            (shown, ratio) => {
+              elements.timerValue.textContent = String(shown);
+              elements.timer.style.setProperty("--timer-progress", String(ratio));
+            },
+            beginAnswerPhase,
+          );
+        } else {
+          beginAnswerPhase();
+        }
       } catch (error) {
         if (token !== phaseToken) return;
         elements.feedbackIcon.textContent = "!";
@@ -1100,10 +1193,12 @@ import {
           // WSのquestion_endedを取りこぼした場合の壁時計フォールバック(reviewEndsAtは概算値)。
           if (
             currentRenderedIndex === session.currentQuestionIndex &&
-            reviewingIndex !== session.currentQuestionIndex && Date.now() >= answerEndTime(session)
+            reviewingIndex !== session.currentQuestionIndex &&
+            (session.questionReviewStartedAt || Date.now() >= answerEndTime(session))
           ) {
-            const fallbackReviewEndsAt = answerEndTime(session) +
-              quizConfig.reviewTimeSeconds * 1000;
+            const fallbackReviewEndsAt = session.reviewEndsAt
+              ? Date.parse(session.reviewEndsAt)
+              : answerEndTime(session) + quizConfig.reviewTimeSeconds * 1000;
             await showReview(session.currentQuestionIndex, phaseToken, fallbackReviewEndsAt);
           }
         }
@@ -1140,8 +1235,10 @@ import {
           void syncSession();
         }
       });
-      // WebSocketを通常経路とし、取りこぼし・別インスタンス時だけ10秒ごとに復旧する。
-      syncTimer = globalThis.setInterval(() => void syncSession(), 10_000);
+      // WebSocketを通常経路とし、取りこぼし・別インスタンス時だけ15秒ごとに復旧する。
+      syncTimer = globalThis.setInterval(() => {
+        if (!document.hidden) void syncSession();
+      }, 15_000);
     }
   }
 
@@ -1200,7 +1297,7 @@ import {
         state.metrics = computeMetrics(state.quiz.records);
         persist(state);
       }
-      goTo("./rocket.html", state, true);
+      goTo("./rocket-build.html", state, true);
       return;
     }
 
@@ -1282,7 +1379,7 @@ import {
       state.metrics = computeMetrics(state.quiz.records);
       state.outcome = null;
       state.status = "rocket";
-      goTo("./rocket.html", state, true);
+      goTo("./rocket-build.html", state, true);
     }
 
     async function showReview(token) {
@@ -1573,8 +1670,9 @@ import {
     });
   }
 
-  function radarEntries() {
-    const categoryScores = state.metrics && state.metrics.categoryScores ? state.metrics.categoryScores : {};
+  function radarEntries(sourceScores) {
+    const categoryScores = sourceScores ||
+      (state.metrics && state.metrics.categoryScores ? state.metrics.categoryScores : {});
     const labels = ["フロントエンド", "バックエンド", "データベース", "API", "インフラ", "セキュリティ"];
     return labels.map((label) => ({ label, value: Math.round(clamp(safeNumber(categoryScores[label]), 0, 100)) }));
   }
@@ -1591,13 +1689,13 @@ import {
     return [centerX + Math.cos(angle) * scaled, centerY + Math.sin(angle) * scaled];
   }
 
-  function renderRadar(svg) {
+  function renderRadar(svg, categoryScores) {
     if (!svg) return;
     const namespace = "http://www.w3.org/2000/svg";
     const centerX = 180;
     const centerY = 137;
     const radius = 88;
-    const values = radarEntries();
+    const values = radarEntries(categoryScores);
     svg.replaceChildren();
 
     const make = (name, attributes = {}) => {
@@ -1654,34 +1752,115 @@ import {
     const crewResults = document.querySelector("#crew-results");
     const crewResultsStatus = document.querySelector("#crew-results-status");
     const crewResultsList = document.querySelector("#crew-results-list");
-    if (auth && crewResults && crewResultsStatus && crewResultsList) {
+    const teamOverview = document.querySelector("#team-result-overview");
+    const publishButton = document.querySelector("#result-publish-button");
+    const refreshButton = document.querySelector("#result-refresh-button");
+    if (
+      auth && crewResults && crewResultsStatus && crewResultsList && teamOverview &&
+      publishButton && refreshButton
+    ) {
       crewResults.hidden = false;
-      const resultsPromise = authoritativeResults
-        ? Promise.resolve(authoritativeResults)
-        : fetchAuthoritativeResults(auth);
-      void resultsPromise.then((results) => {
+
+      function renderSharedResults(results) {
+        authoritativeResults = results;
+        const personalEntry = results.participants.find((participant) => participant.isRequester);
+        publishButton.dataset.published = String(Boolean(personalEntry && personalEntry.published));
+        publishButton.textContent = personalEntry && personalEntry.published
+          ? "結果の公開をやめる"
+          : "自分の結果をチームに公開";
+        teamOverview.hidden = false;
+        document.querySelector("#team-result-power").textContent = results.team.detailsAvailable
+          ? `${results.team.power}%`
+          : "非公開";
+        document.querySelector("#team-result-safety").textContent = results.team.detailsAvailable
+          ? `${results.team.safety}%`
+          : "非公開";
+        document.querySelector("#team-result-completion").textContent =
+          `${results.team.completionRate}%`;
+        const teamRadar = document.querySelector("#team-result-radar");
+        teamRadar.hidden = !results.team.detailsAvailable;
+        if (results.team.detailsAvailable) renderRadar(teamRadar, results.team.categoryScores);
+
         crewResultsList.replaceChildren();
-        results.participants.forEach((participant) => {
+        const visible = results.participants.filter((participant) =>
+          participant.isRequester || participant.published
+        ).sort((left, right) =>
+          safeNumber(right.power) - safeNumber(left.power) ||
+          left.displayName.localeCompare(right.displayName, "ja")
+        );
+        const privateMembers = results.participants.filter((participant) =>
+          !participant.isRequester && !participant.published
+        ).sort((left, right) => left.displayName.localeCompare(right.displayName, "ja"));
+
+        [...visible, ...privateMembers].forEach((participant) => {
           const item = document.createElement("li");
-          if (participant.participantId === auth.participantId) item.classList.add("is-you");
+          if (participant.isRequester) item.classList.add("is-you");
+          if (!participant.isRequester && !participant.published) item.classList.add("is-private");
 
           const name = document.createElement("span");
           name.className = "crew-results-name";
-          name.textContent = participant.displayName;
+          name.textContent = participant.isRequester
+            ? `${participant.displayName}（あなた）`
+            : participant.displayName;
           const detail = document.createElement("span");
           detail.className = "crew-results-detail";
-          detail.textContent = `${participant.correctCount}/${results.questionCount}問正解`;
+          const canSee = participant.isRequester || participant.published;
+          detail.textContent = canSee
+            ? `${participant.correctCount}/${results.questionCount}問正解`
+            : "個人結果は非公開";
           const score = document.createElement("strong");
           score.className = "crew-results-score";
-          score.textContent = `${participant.power}%`;
+          score.textContent = canSee ? `${participant.power}%` : "🔒";
           item.append(name, detail, score);
           crewResultsList.append(item);
         });
         crewResultsStatus.hidden = false;
         crewResultsStatus.textContent = results.participants.length
-          ? `チーム出力 ${results.team.power}% / 安全性 ${results.team.safety}% / 回答完了 ${results.team.completionRate}%`
+          ? results.team.detailsAvailable
+            ? `${results.team.participantCount}人のチーム集計です。公開したメンバーだけ個人結果を確認できます。`
+            : "非公開メンバーの点数を逆算できないよう、全員が公開するまでチーム集計点を隠します。"
           : "共有結果はありません。";
-      }).catch((error) => {
+      }
+
+      async function refreshSharedResults() {
+        try {
+          renderSharedResults(await fetchAuthoritativeResults(auth));
+        } catch (error) {
+          crewResultsStatus.textContent = `共有結果を読み込めませんでした。${error.message}`;
+        }
+      }
+
+      publishButton.addEventListener("click", async () => {
+        if (publishButton.disabled) return;
+        publishButton.disabled = true;
+        try {
+          await requestApi(
+            `/api/sessions/${encodeURIComponent(state.room.sessionId)}/results/publication`,
+            {
+              method: "PUT",
+              headers: bearerHeaders(auth),
+              body: JSON.stringify({ published: publishButton.dataset.published !== "true" })
+            }
+          );
+          await refreshSharedResults();
+        } catch (error) {
+          crewResultsStatus.textContent = `公開設定を変更できませんでした。${error.message}`;
+        } finally {
+          publishButton.disabled = false;
+        }
+      });
+
+      refreshButton.addEventListener("click", async () => {
+        if (refreshButton.disabled) return;
+        refreshButton.disabled = true;
+        await refreshSharedResults();
+        refreshButton.disabled = false;
+      });
+
+      const resultsPromise = authoritativeResults
+        ? Promise.resolve(authoritativeResults)
+        : fetchAuthoritativeResults(auth);
+      void resultsPromise.then(renderSharedResults).catch((error) => {
         crewResultsStatus.textContent = `共有結果を読み込めませんでした。${error.message}`;
       });
     }

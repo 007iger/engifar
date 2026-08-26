@@ -12,6 +12,7 @@ interface RawQuizQuestion {
   id: string;
   category: string;
   weight: number;
+  answerTimeSeconds: number;
   instruction: string;
   question: string;
   choices: readonly string[];
@@ -32,6 +33,7 @@ export interface PublicQuizQuestion {
 export interface QuizConfig {
   questionCount: number;
   answerTimeSeconds: number;
+  answerTimeSecondsByQuestion: readonly number[];
   reviewTimeSeconds: number;
 }
 
@@ -127,11 +129,20 @@ export function validateQuizQuestions(value: unknown): readonly Readonly<RawQuiz
     if (typeof item.weight !== "number" || !Number.isFinite(item.weight) || item.weight <= 0) {
       throw new Error(`Quiz question ${id} has an invalid weight`);
     }
+    if (
+      typeof item.answerTimeSeconds !== "number" ||
+      !Number.isSafeInteger(item.answerTimeSeconds) ||
+      item.answerTimeSeconds < 1 ||
+      item.answerTimeSeconds > 300
+    ) {
+      throw new Error(`Quiz question ${id} has an invalid answerTimeSeconds`);
+    }
 
     return Object.freeze({
       id,
       category: requiredText("category"),
       weight: item.weight,
+      answerTimeSeconds: item.answerTimeSeconds,
       instruction: requiredText("instruction"),
       question: requiredText("question"),
       choices: Object.freeze([...item.choices]),
@@ -216,11 +227,20 @@ export class QuizService {
       ["sign", "verify"],
     );
     this.#now = options.now ?? Date.now;
+    const answerTimeSecondsByQuestion = Object.freeze(
+      questions.map((question) => options.answerTimeSeconds ?? question.answerTimeSeconds),
+    );
     this.config = Object.freeze({
       questionCount: questions.length,
-      answerTimeSeconds: options.answerTimeSeconds ?? DEFAULT_ANSWER_TIME_SECONDS,
+      answerTimeSeconds: answerTimeSecondsByQuestion[0] ?? DEFAULT_ANSWER_TIME_SECONDS,
+      answerTimeSecondsByQuestion,
       reviewTimeSeconds: options.reviewTimeSeconds ?? DEFAULT_REVIEW_TIME_SECONDS,
     });
+  }
+
+  answerTimeSecondsAt(index: number): number {
+    questionAt(index);
+    return this.config.answerTimeSecondsByQuestion[index];
   }
 
   async createAttempt(): Promise<{ progressToken: string }> {
@@ -240,6 +260,7 @@ export class QuizService {
     progressToken: string,
     revealAt?: number,
     variantId?: string,
+    answerTimeSecondsOverride?: number,
   ): Promise<QuizQuestionStart> {
     questionAt(index);
     const progress = await this.#verify(progressToken, "progress");
@@ -252,7 +273,11 @@ export class QuizService {
     }
 
     const now = this.#now();
-    const answerRevealAt = revealAt ?? now + this.config.answerTimeSeconds * 1000;
+    const answerTimeSeconds = answerTimeSecondsOverride ?? this.answerTimeSecondsAt(index);
+    if (!Number.isFinite(answerTimeSeconds) || answerTimeSeconds < 0) {
+      throw new ApiError(500, "QUIZ_CONFIG_MISMATCH", "Quiz answer time is invalid");
+    }
+    const answerRevealAt = revealAt ?? now + answerTimeSeconds * 1000;
     if (!Number.isFinite(answerRevealAt)) {
       throw new ApiError(400, "INVALID_REVEAL_TIME", "Quiz reveal time is invalid");
     }
@@ -268,7 +293,7 @@ export class QuizService {
         expiresAt: progress.expiresAt,
         variantId: questionVariantId,
       }),
-      answerTimeSeconds: this.config.answerTimeSeconds,
+      answerTimeSeconds,
     };
   }
 
@@ -276,12 +301,16 @@ export class QuizService {
     index: number,
     questionToken: string,
     selectedOption: number | null,
+    trustedRevealAt?: number,
   ): Promise<QuizGradeResult> {
     const token = await this.#verify(questionToken, "question");
     if (token.questionIndex !== index) {
       throw new ApiError(409, "QUIZ_TOKEN_MISMATCH", "Quiz token does not match the question");
     }
-    if (token.revealAt === undefined || this.#now() < token.revealAt) {
+    const revealAt = trustedRevealAt === undefined
+      ? token.revealAt
+      : Math.min(token.revealAt ?? Number.POSITIVE_INFINITY, trustedRevealAt);
+    if (revealAt === undefined || this.#now() < revealAt) {
       throw new ApiError(
         409,
         "QUIZ_REVIEW_NOT_READY",

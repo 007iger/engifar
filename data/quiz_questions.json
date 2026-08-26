@@ -3,6 +3,7 @@
     "id": "frontend-html-heading",
     "category": "フロントエンド",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "「EngiFar」をページで最も重要な見出しとして表示します。空欄に入るHTMLタグ名を選んでください。",
     "question": "<＿＿＿>EngiFar</＿＿＿>",
     "choices": [
@@ -18,6 +19,7 @@
     "id": "frontend-anchor-href",
     "category": "フロントエンド",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "「プロフィール」から /profile ページへ移動できるリンクを作ります。URLを指定する属性を選んでください。",
     "question": "<a ＿＿＿=\"/profile\">プロフィール</a>",
     "choices": [
@@ -33,6 +35,7 @@
     "id": "frontend-css-color",
     "category": "フロントエンド",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "タイトルの文字色を緑色にします。CSSで文字色を指定するプロパティを選んでください。",
     "question": ".title {\n  ＿＿＿: #c9f765;\n}",
     "choices": [
@@ -48,6 +51,7 @@
     "id": "frontend-click-event",
     "category": "フロントエンド",
     "weight": 1.2,
+    "answerTimeSeconds": 10,
     "instruction": "ボタンをクリックしたときにstart関数が動くようにします。空欄に入るイベント名を選んでください。",
     "question": "button.addEventListener(\"＿＿＿\", start);",
     "choices": [
@@ -63,6 +67,7 @@
     "id": "backend-deno-serve",
     "category": "バックエンド",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "DenoでWebサーバーを起動して「Hello」と返します。サーバーを開始するメソッド名を選んでください。",
     "question": "Deno.＿＿＿(() => new Response(\"Hello\"));",
     "choices": [
@@ -78,6 +83,7 @@
     "id": "backend-await",
     "category": "バックエンド",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "非同期のfetchUser関数が完了するまで待ち、結果をuserへ入れます。空欄に入るキーワードを選んでください。",
     "question": "const user = ＿＿＿ fetchUser();",
     "choices": [
@@ -93,6 +99,7 @@
     "id": "backend-json-stringify",
     "category": "バックエンド",
     "weight": 1.1,
+    "answerTimeSeconds": 10,
     "instruction": "JavaScriptのオブジェクトをAPIで送れるJSON文字列へ変換します。使うメソッド名を選んでください。",
     "question": "const body = JSON.＿＿＿({ ok: true });",
     "choices": [
@@ -108,6 +115,7 @@
     "id": "backend-read-text-file",
     "category": "バックエンド",
     "weight": 1.2,
+    "answerTimeSeconds": 10,
     "instruction": "config.txtの内容を文字列として読み込みます。Denoのファイル読み込みメソッドを選んでください。",
     "question": "const text = await Deno.＿＿＿(\"config.txt\");",
     "choices": [
@@ -123,6 +131,7 @@
     "id": "database-select",
     "category": "データベース",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "usersテーブルにあるすべての列を取得します。空欄に入るSQLの命令を選んでください。",
     "question": "＿＿＿ * FROM users;",
     "choices": [
@@ -138,6 +147,7 @@
     "id": "database-where",
     "category": "データベース",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "usersテーブルからidが3の行だけを取得します。条件を指定するキーワードを選んでください。",
     "question": "SELECT * FROM users\n＿＿＿ id = 3;",
     "choices": [
@@ -153,6 +163,7 @@
     "id": "database-insert",
     "category": "データベース",
     "weight": 1.1,
+    "answerTimeSeconds": 10,
     "instruction": "usersテーブルへ名前がAoiのデータを1件追加します。空欄に入るSQLの命令を選んでください。",
     "question": "＿＿＿ INTO users (name)\nVALUES (\"Aoi\");",
     "choices": [
@@ -168,6 +179,7 @@
     "id": "database-group-by",
     "category": "データベース",
     "weight": 1.2,
+    "answerTimeSeconds": 10,
     "instruction": "ordersテーブルをuser_idごとにまとめ、ユーザー別の注文数を数えます。空欄を選んでください。",
     "question": "SELECT user_id, COUNT(*)\nFROM orders\n＿＿＿ user_id;",
     "choices": [
@@ -183,6 +195,7 @@
     "id": "api-get",
     "category": "API",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "APIからユーザー一覧を取得します。データ取得に使うHTTPメソッドを選んでください。",
     "question": "fetch(\"/api/users\", {\n  method: \"＿＿＿\"\n});",
     "choices": [
@@ -198,6 +211,7 @@
     "id": "api-post",
     "category": "API",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "APIへ新しいユーザー情報を送って登録します。新規作成に使うHTTPメソッドを選んでください。",
     "question": "fetch(\"/api/users\", {\n  method: \"＿＿＿\",\n  body: JSON.stringify(user)\n});",
     "choices": [
@@ -213,6 +227,7 @@
     "id": "api-status-200",
     "category": "API",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "APIの処理が正常に完了したことを表す、基本的なHTTPステータスを選んでください。",
     "question": "HTTP/1.1 ＿＿＿ OK",
     "choices": [
@@ -228,6 +243,7 @@
     "id": "api-response-json",
     "category": "API",
     "weight": 1.2,
+    "answerTimeSeconds": 10,
     "instruction": "fetchで受け取ったレスポンス本文をJSONとして読み取ります。空欄に入るメソッド名を選んでください。",
     "question": "const response = await fetch(\"/api/users\");\nconst data = await response.＿＿＿();",
     "choices": [
@@ -243,6 +259,7 @@
     "id": "infra-git-status",
     "category": "インフラ",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "Gitで現在の変更状況を確認します。空欄に入るコマンドを選んでください。",
     "question": "git ＿＿＿",
     "choices": [
@@ -258,6 +275,7 @@
     "id": "infra-npm-install",
     "category": "インフラ",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "package.jsonに書かれた依存パッケージをインストールします。空欄に入るnpmコマンドを選んでください。",
     "question": "npm ＿＿＿",
     "choices": [
@@ -273,6 +291,7 @@
     "id": "infra-npm-run-dev",
     "category": "インフラ",
     "weight": 1.1,
+    "answerTimeSeconds": 10,
     "instruction": "package.jsonのscriptsに登録されたdevコマンドを実行します。空欄を選んでください。",
     "question": "npm run ＿＿＿",
     "choices": [
@@ -288,6 +307,7 @@
     "id": "infra-docker-detached",
     "category": "インフラ",
     "weight": 1.2,
+    "answerTimeSeconds": 10,
     "instruction": "Docker Composeのコンテナをバックグラウンドで起動します。空欄に入るオプションを選んでください。",
     "question": "docker compose up ＿＿＿",
     "choices": [
@@ -303,6 +323,7 @@
     "id": "security-password-input",
     "category": "セキュリティ",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "入力したパスワードの文字が画面上で隠れて表示される入力欄を作ります。typeの値を選んでください。",
     "question": "<input type=\"＿＿＿\" name=\"password\">",
     "choices": [
@@ -318,6 +339,7 @@
     "id": "security-text-content",
     "category": "セキュリティ",
     "weight": 1,
+    "answerTimeSeconds": 10,
     "instruction": "ユーザー入力をHTMLとして解釈せず、文字列のまま画面へ表示します。使うプロパティを選んでください。",
     "question": "message.＿＿＿ = userInput;",
     "choices": [
@@ -333,6 +355,7 @@
     "id": "security-bcrypt-hash",
     "category": "セキュリティ",
     "weight": 1.1,
+    "answerTimeSeconds": 10,
     "instruction": "保存前のパスワードからbcryptのハッシュ値を作ります。空欄に入るメソッド名を選んでください。",
     "question": "const hash = await bcrypt.＿＿＿(password, 10);",
     "choices": [
@@ -348,6 +371,7 @@
     "id": "security-sql-parameter",
     "category": "セキュリティ",
     "weight": 1.2,
+    "answerTimeSeconds": 10,
     "instruction": "userIdをSQL文字列へ直接つなげず、パラメータとして渡します。空欄に入るプレースホルダーを選んでください。",
     "question": "const result = await db.query(\n  \"SELECT * FROM users WHERE id = ＿＿＿\",\n  [userId]\n);",
     "choices": [
