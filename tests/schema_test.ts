@@ -68,3 +68,14 @@ Deno.test("question set migration preserves old sessions and versions new sessio
   assert.match(migration, /ALTER COLUMN choice_order_version SET DEFAULT 3/);
   assert.match(migration, /CHECK \(choice_order_version IN \(1, 2, 3\)\)/);
 });
+
+Deno.test("question bank migration stores per-user question selections", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/007_quiz_question_bank.sql", import.meta.url),
+  );
+
+  assert.match(migration, /CREATE TABLE quiz_question/);
+  assert.match(migration, /CREATE TABLE session_participant_question/);
+  assert.match(migration, /UNIQUE \(game_session_id, participant_id, question_id\)/);
+  assert.match(migration, /ALTER COLUMN choice_order_version SET DEFAULT 4/);
+});

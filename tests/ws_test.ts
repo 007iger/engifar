@@ -23,6 +23,9 @@ const membership: MembershipResult = {
 };
 
 class FakeRepository implements GameRepository {
+  getParticipantQuestionSelection(): Promise<never> {
+    return Promise.reject(new Error("No DB-selected question configured for this test"));
+  }
   disconnectedParticipantIds: string[] = [];
 
   healthCheck(): Promise<void> {

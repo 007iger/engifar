@@ -150,3 +150,66 @@ Deno.test("answer SQL counts the just-saved participant when checking all answer
   assert.match(answerSql, /active_participant\.left_at IS NULL/);
   assert.match(answerSql, /AS all_participants_answered/);
 });
+
+Deno.test("session start selects a fixed 1-2-1 difficulty mix for every participant and category", async () => {
+  let selectionSql = "";
+  const client = {
+    query(text: string) {
+      if (text === "BEGIN" || text === "COMMIT" || text === "ROLLBACK") {
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      }
+      if (text.includes("FROM room r")) {
+        return Promise.resolve({
+          rows: [{
+            id: ROOM_ID,
+            code: "ABC234",
+            status: "lobby",
+            genre: "web",
+            created_at: new Date(),
+          }],
+          rowCount: 1,
+        });
+      }
+      if (text.includes("INSERT INTO game_session")) {
+        return Promise.resolve({
+          rows: [{
+            ...sessionRow(new Date()),
+            choice_order_version: 4,
+            answer_time_seconds: 15,
+            question_answer_time_seconds: Array(24).fill(15),
+          }],
+          rowCount: 1,
+        });
+      }
+      if (text.includes("INSERT INTO session_participant (")) {
+        return Promise.resolve({ rows: [{}, {}], rowCount: 2 });
+      }
+      if (text.includes("INSERT INTO session_participant_question")) {
+        selectionSql = text;
+        return Promise.resolve({ rows: Array(48).fill({}), rowCount: 48 });
+      }
+      return Promise.resolve({ rows: [], rowCount: 0 });
+    },
+    release() {},
+  };
+  const pool = { connect: () => Promise.resolve(client) } as unknown as Pool;
+
+  const result = await new PostgresGameRepository(pool).startSession(
+    "ABC234",
+    TOKEN,
+    24,
+    Array(24).fill(15),
+    3_000,
+  );
+
+  assert.equal(result.choiceOrderVersion, 4);
+  assert.match(
+    selectionSql,
+    /PARTITION BY sp\.participant_id, question\.category, question\.difficulty\s+ORDER BY random\(\)/,
+  );
+  assert.match(
+    selectionSql,
+    /CASE difficulty WHEN 1 THEN 1 WHEN 2 THEN 2 ELSE 1 END/,
+  );
+  assert.match(selectionSql, /INSERT INTO session_participant_question/);
+});

@@ -68,7 +68,25 @@ export interface SessionResultParticipantSource {
   displayName: string;
   role: ParticipantRole;
   resultPublished: boolean;
+  questions?: QuizQuestionRecord[];
   answers: SessionResultAnswer[];
+}
+
+export interface ParticipantQuestionSelection {
+  participantId: string;
+  question: QuizQuestionRecord;
+}
+
+export interface QuizQuestionRecord {
+  id: string;
+  category: string;
+  weight: number;
+  answerTimeSeconds: number;
+  instruction: string;
+  question: string;
+  choices: string[];
+  answer: number;
+  explanation: string;
 }
 
 export interface SessionResultSource {
@@ -147,6 +165,12 @@ export interface GameRepository {
     accessToken: string,
     reviewTimeSeconds?: number,
   ): Promise<GameSessionSummary>;
+  /** 参加者用にセッション開始時に抽選・固定した問題を取得する。 */
+  getParticipantQuestionSelection(
+    sessionId: string,
+    accessToken: string,
+    questionIndex: number,
+  ): Promise<ParticipantQuestionSelection>;
   /** 完了済みセッションの参加者と回答を、共有結果の集計用に取得する。 */
   getSessionResultSource(
     sessionId: string,
