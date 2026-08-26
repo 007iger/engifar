@@ -35,6 +35,7 @@ export interface GameSessionSummary {
   sessionNumber: number;
   status: SessionStatus;
   questionCount: number;
+  choiceOrderVersion: number;
   answerTimeSeconds: number;
   currentQuestionIndex: number | null;
   questionStartedAt: string | null;
@@ -67,6 +68,7 @@ export interface SessionResultParticipantSource {
 
 export interface SessionResultSource {
   session: GameSessionSummary;
+  requesterParticipantId: string;
   participants: SessionResultParticipantSource[];
 }
 
@@ -85,6 +87,16 @@ export interface ParticipantQuizResult {
 export interface SessionResults {
   sessionId: string;
   questionCount: number;
+  personal: ParticipantQuizResult;
+  team: {
+    participantCount: number;
+    answeredCount: number;
+    possibleAnswerCount: number;
+    completionRate: number;
+    power: number;
+    safety: number;
+    categoryScores: Record<string, number>;
+  };
   participants: ParticipantQuizResult[];
 }
 
@@ -112,6 +124,7 @@ export interface GameRepository {
   getSessionForParticipant(
     sessionId: string,
     accessToken: string,
+    reviewTimeSeconds?: number,
   ): Promise<GameSessionSummary>;
   /** 完了済みセッションの参加者と回答を、共有結果の集計用に取得する。 */
   getSessionResultSource(
@@ -152,4 +165,11 @@ export interface GameRepository {
    * すでに離脱済みだった場合はnullを返す(二重処理の防止)。
    */
   markParticipantDisconnected(participantId: string): Promise<{ roomId: string } | null>;
+
+  /**
+   * 全参加者が離脱済みで、最後の離脱からolderThanMs以上経過した部屋を削除する(定期クリーンアップ用)。
+   * room行を削除すると、participant/game_session以下はON DELETE CASCADEで連動して削除される。
+   * 削除した部屋のIDの配列を返す。
+   */
+  deleteExpiredEmptyRooms(olderThanMs: number): Promise<string[]>;
 }

@@ -1,12 +1,15 @@
+import questionData from "../data/quiz_questions.json" with { type: "json" };
 import { ApiError } from "./errors.ts";
 
 const DEFAULT_ANSWER_TIME_SECONDS = 10;
 const DEFAULT_REVIEW_TIME_SECONDS = 5;
 const TOKEN_LIFETIME_MS = 60 * 60 * 1000;
+export const LEGACY_CHOICE_ORDER_VARIANT = "legacy-v1";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 interface RawQuizQuestion {
+  id: string;
   category: string;
   weight: number;
   instruction: string;
@@ -17,6 +20,7 @@ interface RawQuizQuestion {
 }
 
 export interface PublicQuizQuestion {
+  id: string;
   index: number;
   category: string;
   weight: number;
@@ -54,12 +58,20 @@ export interface QuizScore {
   categoryScores: Record<string, number>;
 }
 
+export function safetyFromCategoryScores(values: readonly number[]): number {
+  if (!values.length) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return Math.round(Math.min(100, Math.max(0, mean - 0.5 * Math.sqrt(variance))));
+}
+
 interface TokenPayload {
   type: "progress" | "question";
   attemptId: string;
   questionIndex: number;
   expiresAt: number;
   revealAt?: number;
+  variantId?: string;
 }
 
 export interface QuizServiceOptions {
@@ -69,253 +81,67 @@ export interface QuizServiceOptions {
   reviewTimeSeconds?: number;
 }
 
-const rawQuestions: readonly RawQuizQuestion[] = [
-  {
-    category: "フロントエンド",
-    weight: 1,
-    instruction:
-      "「EngiFar」をページで最も重要な見出しとして表示します。空欄に入るHTMLタグ名を選んでください。",
-    question: "<＿＿＿>EngiFar</＿＿＿>",
-    choices: ["h1", "p", "span", "div"],
-    answer: 0,
-    explanation: "h1は、ページの中心となる見出しを表すHTMLタグです。",
-  },
-  {
-    category: "フロントエンド",
-    weight: 1,
-    instruction:
-      "「プロフィール」から /profile ページへ移動できるリンクを作ります。URLを指定する属性を選んでください。",
-    question: '<a ＿＿＿="/profile">プロフィール</a>',
-    choices: ["href", "src", "action", "to"],
-    answer: 0,
-    explanation: "aタグのhref属性に移動先のURLを指定します。",
-  },
-  {
-    category: "フロントエンド",
-    weight: 1,
-    instruction:
-      "タイトルの文字色を緑色にします。CSSで文字色を指定するプロパティを選んでください。",
-    question: ".title {\n  ＿＿＿: #c9f765;\n}",
-    choices: ["color", "background-color", "font-color", "text-color"],
-    answer: 0,
-    explanation: "colorプロパティは文字の色を指定します。",
-  },
-  {
-    category: "フロントエンド",
-    weight: 1.2,
-    instruction:
-      "ボタンをクリックしたときにstart関数が動くようにします。空欄に入るイベント名を選んでください。",
-    question: 'button.addEventListener("＿＿＿", start);',
-    choices: ["click", "press", "tap", "onClick"],
-    answer: 0,
-    explanation: "clickイベントは、ボタンなどがクリックされたときに発生します。",
-  },
-  {
-    category: "バックエンド",
-    weight: 1,
-    instruction:
-      "DenoでWebサーバーを起動して「Hello」と返します。サーバーを開始するメソッド名を選んでください。",
-    question: 'Deno.＿＿＿(() => new Response("Hello"));',
-    choices: ["serve", "start", "listenWeb", "runServer"],
-    answer: 0,
-    explanation: "Deno.serve()を使うと、HTTPリクエストを受け取るサーバーを起動できます。",
-  },
-  {
-    category: "バックエンド",
-    weight: 1,
-    instruction:
-      "非同期のfetchUser関数が完了するまで待ち、結果をuserへ入れます。空欄に入るキーワードを選んでください。",
-    question: "const user = ＿＿＿ fetchUser();",
-    choices: ["await", "wait", "async", "then"],
-    answer: 0,
-    explanation: "awaitはPromiseの完了を待って、その結果を受け取ります。",
-  },
-  {
-    category: "バックエンド",
-    weight: 1.1,
-    instruction:
-      "JavaScriptのオブジェクトをAPIで送れるJSON文字列へ変換します。使うメソッド名を選んでください。",
-    question: "const body = JSON.＿＿＿({ ok: true });",
-    choices: ["stringify", "parse", "encode", "toJSON"],
-    answer: 0,
-    explanation: "JSON.stringify()は、オブジェクトをJSON形式の文字列へ変換します。",
-  },
-  {
-    category: "バックエンド",
-    weight: 1.2,
-    instruction:
-      "config.txtの内容を文字列として読み込みます。Denoのファイル読み込みメソッドを選んでください。",
-    question: 'const text = await Deno.＿＿＿("config.txt");',
-    choices: ["readTextFile", "readFileText", "openText", "load"],
-    answer: 0,
-    explanation: "Deno.readTextFile()は、ファイルの内容を文字列として読み取ります。",
-  },
-  {
-    category: "データベース",
-    weight: 1,
-    instruction: "usersテーブルにあるすべての列を取得します。空欄に入るSQLの命令を選んでください。",
-    question: "＿＿＿ * FROM users;",
-    choices: ["SELECT", "GET", "READ", "FIND"],
-    answer: 0,
-    explanation: "SELECTは、データベースからデータを取得するSQLの命令です。",
-  },
-  {
-    category: "データベース",
-    weight: 1,
-    instruction:
-      "usersテーブルからidが3の行だけを取得します。条件を指定するキーワードを選んでください。",
-    question: "SELECT * FROM users\n＿＿＿ id = 3;",
-    choices: ["WHERE", "WHEN", "IF", "FILTER"],
-    answer: 0,
-    explanation: "WHEREを使うと、取得する行の条件を指定できます。",
-  },
-  {
-    category: "データベース",
-    weight: 1.1,
-    instruction:
-      "usersテーブルへ名前がAoiのデータを1件追加します。空欄に入るSQLの命令を選んでください。",
-    question: '＿＿＿ INTO users (name)\nVALUES ("Aoi");',
-    choices: ["INSERT", "ADD", "CREATE", "PUSH"],
-    answer: 0,
-    explanation: "INSERT INTOは、テーブルへ新しい行を追加するSQLの命令です。",
-  },
-  {
-    category: "データベース",
-    weight: 1.2,
-    instruction:
-      "ordersテーブルをuser_idごとにまとめ、ユーザー別の注文数を数えます。空欄を選んでください。",
-    question: "SELECT user_id, COUNT(*)\nFROM orders\n＿＿＿ user_id;",
-    choices: ["GROUP BY", "ORDER BY", "COLLECT BY", "PARTITION WITH"],
-    answer: 0,
-    explanation: "GROUP BYは、同じuser_idの行をグループにまとめて集計します。",
-  },
-  {
-    category: "API",
-    weight: 1,
-    instruction: "APIからユーザー一覧を取得します。データ取得に使うHTTPメソッドを選んでください。",
-    question: 'fetch("/api/users", {\n  method: "＿＿＿"\n});',
-    choices: ["GET", "POST", "PUT", "DELETE"],
-    answer: 0,
-    explanation: "GETは、サーバーからデータを取得するときに使うHTTPメソッドです。",
-  },
-  {
-    category: "API",
-    weight: 1,
-    instruction:
-      "APIへ新しいユーザー情報を送って登録します。新規作成に使うHTTPメソッドを選んでください。",
-    question: 'fetch("/api/users", {\n  method: "＿＿＿",\n  body: JSON.stringify(user)\n});',
-    choices: ["POST", "GET", "HEAD", "TRACE"],
-    answer: 0,
-    explanation: "POSTは、サーバーへデータを送り、新しいデータを作るときに使います。",
-  },
-  {
-    category: "API",
-    weight: 1,
-    instruction: "APIの処理が正常に完了したことを表す、基本的なHTTPステータスを選んでください。",
-    question: "HTTP/1.1 ＿＿＿ OK",
-    choices: ["200", "404", "500", "301"],
-    answer: 0,
-    explanation: "200 OKは、リクエストが正常に処理されたことを表します。",
-  },
-  {
-    category: "API",
-    weight: 1.2,
-    instruction:
-      "fetchで受け取ったレスポンス本文をJSONとして読み取ります。空欄に入るメソッド名を選んでください。",
-    question: 'const response = await fetch("/api/users");\nconst data = await response.＿＿＿();',
-    choices: ["json", "parseJSON", "toObject", "bodyJSON"],
-    answer: 0,
-    explanation: "Responseのjson()は、レスポンス本文をJSONとして読み取ります。",
-  },
-  {
-    category: "インフラ",
-    weight: 1,
-    instruction: "Gitで現在の変更状況を確認します。空欄に入るコマンドを選んでください。",
-    question: "git ＿＿＿",
-    choices: ["status", "check", "state", "show-all"],
-    answer: 0,
-    explanation: "git statusは、変更されたファイルや現在のブランチ状態を表示します。",
-  },
-  {
-    category: "インフラ",
-    weight: 1,
-    instruction:
-      "package.jsonに書かれた依存パッケージをインストールします。空欄に入るnpmコマンドを選んでください。",
-    question: "npm ＿＿＿",
-    choices: ["install", "download", "setup", "packages"],
-    answer: 0,
-    explanation: "npm installは、package.jsonを読み、必要なパッケージをインストールします。",
-  },
-  {
-    category: "インフラ",
-    weight: 1.1,
-    instruction: "package.jsonのscriptsに登録されたdevコマンドを実行します。空欄を選んでください。",
-    question: "npm run ＿＿＿",
-    choices: ["dev", "install", "package", "node"],
-    answer: 0,
-    explanation: "npm run devは、scriptsに登録されたdevコマンドを実行します。",
-  },
-  {
-    category: "インフラ",
-    weight: 1.2,
-    instruction:
-      "Docker Composeのコンテナをバックグラウンドで起動します。空欄に入るオプションを選んでください。",
-    question: "docker compose up ＿＿＿",
-    choices: ["-d", "-b", "--hide", "--later"],
-    answer: 0,
-    explanation: "-dを付けると、コンテナをバックグラウンドで起動できます。",
-  },
-  {
-    category: "セキュリティ",
-    weight: 1,
-    instruction:
-      "入力したパスワードの文字が画面上で隠れて表示される入力欄を作ります。typeの値を選んでください。",
-    question: '<input type="＿＿＿" name="password">',
-    choices: ["password", "secret", "hidden-text", "secure"],
-    answer: 0,
-    explanation: 'type="password"にすると、入力文字が伏せて表示されます。',
-  },
-  {
-    category: "セキュリティ",
-    weight: 1,
-    instruction:
-      "ユーザー入力をHTMLとして解釈せず、文字列のまま画面へ表示します。使うプロパティを選んでください。",
-    question: "message.＿＿＿ = userInput;",
-    choices: ["textContent", "innerHTML", "outerHTML", "htmlValue"],
-    answer: 0,
-    explanation: "textContentは内容を文字列として扱い、安心できる画面表示につながります。",
-  },
-  {
-    category: "セキュリティ",
-    weight: 1.1,
-    instruction:
-      "保存前のパスワードからbcryptのハッシュ値を作ります。空欄に入るメソッド名を選んでください。",
-    question: "const hash = await bcrypt.＿＿＿(password, 10);",
-    choices: ["hash", "encrypt", "protect", "secure"],
-    answer: 0,
-    explanation: "bcrypt.hash()は、パスワードから保存用のハッシュ値を生成します。",
-  },
-  {
-    category: "セキュリティ",
-    weight: 1.2,
-    instruction:
-      "userIdをSQL文字列へ直接つなげず、パラメータとして渡します。空欄に入るプレースホルダーを選んでください。",
-    question:
-      'const result = await db.query(\n  "SELECT * FROM users WHERE id = ＿＿＿",\n  [userId]\n);',
-    choices: ["$1", "userId", "input", "raw"],
-    answer: 0,
-    explanation: "$1と値の配列を使うと、入力値をパラメータとして安全に渡せます。",
-  },
-];
+const EXPECTED_CHOICE_COUNT = 4;
 
-const questions = rawQuestions.map((item, index) => {
-  const shift = index % item.choices.length;
-  return Object.freeze({
-    ...item,
-    choices: Object.freeze(item.choices.slice(shift).concat(item.choices.slice(0, shift))),
-    answer: (item.answer - shift + item.choices.length) % item.choices.length,
-  });
-});
+export function validateQuizQuestions(value: unknown): readonly Readonly<RawQuizQuestion>[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("Quiz question data must be a non-empty array");
+  }
+
+  const ids = new Set<string>();
+  return Object.freeze(value.map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(`Quiz question ${index} must be an object`);
+    }
+    const item = entry as Record<string, unknown>;
+    const requiredText = (key: string): string => {
+      const text = item[key];
+      if (typeof text !== "string" || text.trim().length === 0) {
+        throw new Error(`Quiz question ${index} has an invalid ${key}`);
+      }
+      return text;
+    };
+
+    const id = requiredText("id");
+    if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(id) || ids.has(id)) {
+      throw new Error(`Quiz question ${index} has an invalid or duplicate id`);
+    }
+    ids.add(id);
+
+    if (
+      !Array.isArray(item.choices) ||
+      item.choices.length !== EXPECTED_CHOICE_COUNT ||
+      !item.choices.every((choice) => typeof choice === "string" && choice.trim().length > 0) ||
+      new Set(item.choices).size !== item.choices.length
+    ) {
+      throw new Error(`Quiz question ${id} must have four unique non-empty choices`);
+    }
+    if (
+      typeof item.answer !== "number" ||
+      !Number.isInteger(item.answer) ||
+      item.answer < 0 ||
+      item.answer >= item.choices.length
+    ) {
+      throw new Error(`Quiz question ${id} has an invalid answer index`);
+    }
+    if (typeof item.weight !== "number" || !Number.isFinite(item.weight) || item.weight <= 0) {
+      throw new Error(`Quiz question ${id} has an invalid weight`);
+    }
+
+    return Object.freeze({
+      id,
+      category: requiredText("category"),
+      weight: item.weight,
+      instruction: requiredText("instruction"),
+      question: requiredText("question"),
+      choices: Object.freeze([...item.choices]),
+      answer: item.answer,
+      explanation: requiredText("explanation"),
+    });
+  }));
+}
+
+const questions = validateQuizQuestions(questionData);
 
 function questionAt(index: number): Readonly<RawQuizQuestion> {
   const question = questions[index];
@@ -325,9 +151,12 @@ function questionAt(index: number): Readonly<RawQuizQuestion> {
   return question;
 }
 
-function publicQuestion(index: number): PublicQuizQuestion {
-  const { category, weight, instruction, question, choices } = questionAt(index);
-  return { index, category, weight, instruction, question, choices };
+function publicQuestion(
+  index: number,
+  shuffled: Readonly<RawQuizQuestion>,
+): PublicQuizQuestion {
+  const { id, category, weight, instruction, question, choices } = shuffled;
+  return { id, index, category, weight, instruction, question, choices };
 }
 
 function encodeBase64Url(bytes: Uint8Array): string {
@@ -337,6 +166,7 @@ function encodeBase64Url(bytes: Uint8Array): string {
 }
 
 function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("invalid base64url");
   const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   const binary = atob(padded);
@@ -344,6 +174,7 @@ function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> {
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index);
   }
+  if (encodeBase64Url(bytes) !== value) throw new Error("non-canonical base64url");
   return bytes;
 }
 
@@ -361,7 +192,10 @@ function isTokenPayload(value: unknown): value is TokenPayload {
     typeof payload.expiresAt === "number" &&
     Number.isFinite(payload.expiresAt) &&
     (payload.revealAt === undefined ||
-      (typeof payload.revealAt === "number" && Number.isFinite(payload.revealAt)));
+      (typeof payload.revealAt === "number" && Number.isFinite(payload.revealAt))) &&
+    (payload.variantId === undefined ||
+      (typeof payload.variantId === "string" && payload.variantId.length > 0 &&
+        payload.variantId.length <= 128));
 }
 
 export class QuizService {
@@ -405,6 +239,7 @@ export class QuizService {
     index: number,
     progressToken: string,
     revealAt?: number,
+    variantId?: string,
   ): Promise<QuizQuestionStart> {
     questionAt(index);
     const progress = await this.#verify(progressToken, "progress");
@@ -421,14 +256,17 @@ export class QuizService {
     if (!Number.isFinite(answerRevealAt)) {
       throw new ApiError(400, "INVALID_REVEAL_TIME", "Quiz reveal time is invalid");
     }
+    const questionVariantId = variantId ?? progress.attemptId;
+    const question = await this.#shuffledQuestion(index, questionVariantId);
     return {
-      question: publicQuestion(index),
+      question: publicQuestion(index, question),
       questionToken: await this.#sign({
         type: "question",
         attemptId: progress.attemptId,
         questionIndex: index,
         revealAt: answerRevealAt,
         expiresAt: progress.expiresAt,
+        variantId: questionVariantId,
       }),
       answerTimeSeconds: this.config.answerTimeSeconds,
     };
@@ -451,7 +289,10 @@ export class QuizService {
       );
     }
 
-    const question = questionAt(index);
+    const question = await this.#shuffledQuestion(
+      index,
+      token.variantId ?? LEGACY_CHOICE_ORDER_VARIANT,
+    );
     const nextIndex = index + 1;
     const nextProgressToken = nextIndex < questions.length
       ? await this.#sign({
@@ -472,10 +313,11 @@ export class QuizService {
     };
   }
 
-  scoreAnswers(
+  async scoreAnswers(
     questionCount: number,
     selectedOptions: readonly (number | null)[],
-  ): QuizScore {
+    variantId = "shared-default",
+  ): Promise<QuizScore> {
     if (
       !Number.isSafeInteger(questionCount) || questionCount < 1 || questionCount > questions.length
     ) {
@@ -489,7 +331,7 @@ export class QuizService {
     let totalWeight = 0;
 
     for (let index = 0; index < questionCount; index += 1) {
-      const question = questionAt(index);
+      const question = await this.#shuffledQuestion(index, variantId);
       const selectedOption = Number.isInteger(selectedOptions[index])
         ? selectedOptions[index]
         : null;
@@ -516,11 +358,46 @@ export class QuizService {
       answeredCount,
       correctCount,
       power: totalWeight ? Math.round((correctWeight / totalWeight) * 100) : 0,
-      safety: values.length
-        ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
-        : 0,
+      safety: safetyFromCategoryScores(values),
       categoryScores,
     };
+  }
+
+  async #shuffledQuestion(index: number, variantId: string): Promise<Readonly<RawQuizQuestion>> {
+    if (!variantId || variantId.length > 128) {
+      throw new ApiError(400, "INVALID_QUIZ_VARIANT", "Quiz variant is invalid");
+    }
+
+    const question = questionAt(index);
+    if (variantId === LEGACY_CHOICE_ORDER_VARIANT) {
+      const shift = index % question.choices.length;
+      return Object.freeze({
+        ...question,
+        choices: Object.freeze(
+          question.choices.slice(shift).concat(question.choices.slice(0, shift)),
+        ),
+        answer: (question.answer - shift + question.choices.length) % question.choices.length,
+      });
+    }
+
+    const signature = new Uint8Array(
+      await crypto.subtle.sign(
+        "HMAC",
+        await this.#key,
+        encoder.encode(`choice-order:${variantId}:${index}`),
+      ),
+    );
+    const order = question.choices.map((_, choiceIndex) => choiceIndex);
+    for (let cursor = order.length - 1, byteIndex = 0; cursor > 0; cursor--, byteIndex++) {
+      const swapIndex = signature[byteIndex] % (cursor + 1);
+      [order[cursor], order[swapIndex]] = [order[swapIndex], order[cursor]];
+    }
+    const choices = Object.freeze(order.map((choiceIndex) => question.choices[choiceIndex]));
+    return Object.freeze({
+      ...question,
+      choices,
+      answer: order.indexOf(question.answer),
+    });
   }
 
   async #sign(payload: TokenPayload): Promise<string> {

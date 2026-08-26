@@ -20,7 +20,7 @@ export type WsEvent =
     timeLimitSeconds: number;
     questionStartedAt: string | null;
   }
-  | { type: "question_ended"; questionIndex: number }
+  | { type: "question_ended"; questionIndex: number; reviewEndsAt: number }
   | { type: "all_questions_done" }
   | { type: "launch_ready"; categoryScores: Record<string, number> };
 
@@ -127,7 +127,10 @@ export async function handleWsUpgrade(
   repository: GameRepository,
 ): Promise<Response | null> {
   const roomCode = url.searchParams.get("roomCode");
-  const token = url.searchParams.get("token");
+  const protocols = req.headers.get("sec-websocket-protocol")
+    ?.split(",")
+    .map((protocol) => protocol.trim()) ?? [];
+  const token = protocols[0] === "engifar-v1" ? protocols[1] : null;
   if (!roomCode || !token) {
     return null;
   }
@@ -137,7 +140,7 @@ export async function handleWsUpgrade(
   // ここでは単に接続を部屋(roomId)に登録するだけにする。
   const { roomId, participant } = await repository.authenticateParticipant(roomCode, token);
 
-  const { socket, response } = Deno.upgradeWebSocket(req);
+  const { socket, response } = Deno.upgradeWebSocket(req, { protocol: "engifar-v1" });
   const connections = roomSet(roomId);
 
   socket.onopen = () => {

@@ -94,6 +94,10 @@ class FakeRepository implements GameRepository {
     this.disconnectedParticipantIds.push(participantId);
     return Promise.resolve({ roomId: membership.room.id });
   }
+
+  deleteExpiredEmptyRooms(): Promise<string[]> {
+    return Promise.reject(new Error("not used"));
+  }
 }
 
 Deno.test("ハートビートが切れると離脱扱いになりplayer_leftが配信される", async () => {
@@ -103,7 +107,10 @@ Deno.test("ハートビートが切れると離脱扱いになりplayer_leftが�
 
   try {
     // 見届け役: 定期的に何か送って自分は生存させ続け、player_left通知を受け取れるようにする。
-    const watcher = new WebSocket(`ws://localhost:8197/ws?roomCode=ABC234&token=${TOKEN}`);
+    const watcher = new WebSocket(
+      "ws://localhost:8197/ws?roomCode=ABC234",
+      ["engifar-v1", TOKEN],
+    );
     const received: { type: string }[] = [];
     watcher.onmessage = (e) => received.push(JSON.parse(e.data));
     await new Promise((resolve) => {
@@ -113,7 +120,8 @@ Deno.test("ハートビートが切れると離脱扱いになりplayer_leftが�
 
     // 離脱させる側: 何も送らないので、ハートビートのタイムアウト(50ms)で切断される。
     const victim = new WebSocket(
-      `ws://localhost:8197/ws?roomCode=ABC234&token=${SECOND_TOKEN}`,
+      "ws://localhost:8197/ws?roomCode=ABC234",
+      ["engifar-v1", SECOND_TOKEN],
     );
     await new Promise((resolve) => {
       victim.onopen = resolve;
@@ -141,7 +149,10 @@ Deno.test("正常にWebSocketを閉じた場合もDB上の離脱処理が呼ば�
   startHeartbeatMonitor(repository, 1_000, 1_000, 30);
 
   try {
-    const ws = new WebSocket(`ws://localhost:8196/ws?roomCode=ABC234&token=${TOKEN}`);
+    const ws = new WebSocket(
+      "ws://localhost:8196/ws?roomCode=ABC234",
+      ["engifar-v1", TOKEN],
+    );
     await new Promise((resolve) => {
       ws.onopen = resolve;
     });
@@ -162,12 +173,18 @@ Deno.test("画面遷移中に再接続すれば離脱扱いにならない", asy
   startHeartbeatMonitor(repository, 2_000, 2_000, 500);
 
   try {
-    const first = new WebSocket(`ws://localhost:8195/ws?roomCode=ABC234&token=${TOKEN}`);
+    const first = new WebSocket(
+      "ws://localhost:8195/ws?roomCode=ABC234",
+      ["engifar-v1", TOKEN],
+    );
     await new Promise((resolve) => first.addEventListener("open", resolve, { once: true }));
     first.close();
     await new Promise((resolve) => setTimeout(resolve, 30));
 
-    const reconnected = new WebSocket(`ws://localhost:8195/ws?roomCode=ABC234&token=${TOKEN}`);
+    const reconnected = new WebSocket(
+      "ws://localhost:8195/ws?roomCode=ABC234",
+      ["engifar-v1", TOKEN],
+    );
     await new Promise((resolve) => reconnected.addEventListener("open", resolve, { once: true }));
     await new Promise((resolve) => setTimeout(resolve, 550));
     assert.deepEqual(repository.disconnectedParticipantIds, []);

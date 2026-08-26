@@ -56,9 +56,28 @@ Deno.test("room controls call the shared room and session APIs", async () => {
   assert.match(source, /\/participants`/);
   assert.match(source, /\/sessions`/);
   assert.match(source, /\/answers\/\$\{index\}`/);
-  assert.match(source, /new WebSocket\(url\)/);
+  assert.match(source, /new WebSocket\(url, \["engifar-v1", auth\.accessToken\]\)/);
   assert.match(source, /\/results`/);
   assert.match(source, /engifar-room-auth-v1/);
+  assert.doesNotMatch(source, /searchParams\.set\("token"/);
+});
+
+Deno.test("quiz progress stays out of URLs and completed quizzes replace browser history", async () => {
+  const source = await Deno.readTextFile("public/script.js");
+
+  assert.doesNotMatch(source, /location\.hash|#mission=|URLSearchParams/);
+  assert.match(source, /event\.persisted/);
+  assert.match(source, /goTo\("\.\/rocket\.html", state, true\)/);
+  assert.match(source, /state\.status !== "quiz"/);
+});
+
+Deno.test("static pages include baseline browser security headers", async () => {
+  const response = await responseFor("/index.html");
+
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
+  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+  assert.match(response.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/);
 });
 
 Deno.test("all local HTML references are served successfully", async () => {

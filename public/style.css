@@ -2977,10 +2977,15 @@ a {
 .room-entry-panel input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(98,228,236,.1); }
 .compact-color { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 7px; }
 .compact-color > span { grid-column: 1/-1; margin: 0; }
-.compact-color input { width: 38px; height: 38px; padding: 2px; border: 1px solid var(--line); border-radius: 10px; background: transparent; }
+.selected-color-swatch { display:block; width:38px; height:38px; border:2px solid rgba(255,255,255,.7); border-radius:10px; background:var(--swatch-color,#54d37c); box-shadow:0 0 14px color-mix(in srgb,var(--swatch-color,#54d37c) 50%,transparent); }
 .compact-color output { overflow: hidden; color: var(--cyan); font: 800 10px ui-monospace, monospace; }
 .compact-palette { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 10px; margin: 9px 0; }
+.compact-palette[hidden] { display:none; }
 .compact-palette .tone-palette { min-width: 160px; }
+.color-quick-actions { display:flex; justify-content:flex-end; gap:8px; margin:9px 0 0; }
+.color-options-toggle,.random-color-button { min-height:34px; padding:7px 13px; border:1px solid var(--line-strong); border-radius:999px; color:var(--cyan); background:rgba(5,15,28,.78); font-size:11px; font-weight:900; cursor:pointer; }
+.random-color-button { color:var(--lime); }
+.color-options-toggle:hover,.random-color-button:hover { background:rgba(18,42,65,.92); }
 .home-actions { display: grid; grid-template-columns: 1.15fr .85fr; gap: 8px; }
 .home-actions .primary-button,
 .home-actions .secondary-button { width: 100%; min-height: 42px; }
@@ -2998,7 +3003,7 @@ a {
   .compact-name span,
   .compact-color > span { font-size:12px; }
   .compact-name input { height:57px; padding-inline:16px; font-size:20px; }
-  .compact-color input { width:57px; height:57px; }
+  .selected-color-swatch { width:57px; height:57px; }
   .compact-color output { font-size:13px; }
   .compact-palette { gap:16px; margin:14px 0; }
   .hue-control input { height:27px; }
@@ -3107,9 +3112,10 @@ a {
   .home-rocket { width:62px; height:132px; }
   .home-control { padding:9px 10px; border-radius:15px; }
   .home-profile-row { grid-template-columns:auto minmax(100px,1fr) 90px; gap:7px; }
-  .home-profile-row .crew-avatar{--crew-size:43px}.compact-name input{height:34px;font-size:12px}.compact-color input{width:34px;height:34px}.compact-color output{font-size:8px}
+  .home-profile-row .crew-avatar{--crew-size:43px}.compact-name input{height:34px;font-size:12px}.selected-color-swatch{width:34px;height:34px}.compact-color output{font-size:8px}
   .compact-palette { margin:6px 0; gap:7px; }.compact-palette .tone-palette{min-width:122px}.compact-palette .tone-button{width:18px;height:18px}
-  .home-actions .primary-button,.home-actions .secondary-button{min-height:38px;padding:8px 10px;font-size:11px}.home-room-note{display:none}.room-entry-panel{margin-top:6px;padding-top:6px}.room-entry-panel input{height:34px;font-size:11px}
+  .color-quick-actions{justify-content:center;margin:7px auto 9px}.color-options-toggle,.random-color-button{min-height:32px;padding:6px 11px;font-size:9px}
+  .home-actions{grid-template-columns:1fr;width:min(100%,330px);margin-inline:auto;gap:10px}.home-actions .primary-button,.home-actions .secondary-button{min-height:54px;padding:11px 16px;font-size:14px}.home-room-note{display:none}.room-entry-panel{width:min(100%,330px);margin:8px auto 0;padding-top:8px}.room-entry-panel input{height:40px;font-size:12px}
   .room-shell{grid-template-rows:48px minmax(0,1fr)}.room-main-simple{grid-template-columns:1fr;grid-template-rows:minmax(190px,1fr) auto;gap:8px}.room-stage{height:auto;min-height:190px}.room-rocket{bottom:16%;width:58px;height:124px}.room-ring{width:260px}.room-ring--inner{width:170px}.room-bot{--crew-size:35px}.room-bot--one{left:12%;top:23%}.room-bot--two{right:12%;top:23%}.room-bot--three{left:20%;bottom:9%}.room-bot--four{right:20%;bottom:9%}.room-bot--player{bottom:1%}.room-lobby-panel{padding:13px;border-radius:17px}.room-lobby-panel h1{margin:3px 0 9px;font-size:21px}.room-future-note{margin:8px 0;font-size:8px}.room-player-card{padding:7px}.room-lobby-panel .primary-button{min-height:40px}
   .rank-copy{padding:16px}.rank-copy h1{font-size:clamp(32px,11vw,52px)}.rank-destination{width:76vw}
   .result-panel h1{font-size:clamp(22px,7vw,30px)}
@@ -3138,6 +3144,39 @@ a {
   .result-data-grid .result-metrics .metric-altitude{display:block}
   .result-data-grid .result-metrics>div{padding:4px 7px}
   .result-data-grid .result-metrics dd b{font-size:21px}
+}
+
+@media (orientation:landscape) and (max-height:560px) and (min-width:600px) {
+  .reference-home-main {
+    grid-template-columns:minmax(220px,.68fr) minmax(390px,1.32fr);
+    grid-template-rows:auto minmax(0,1fr);
+    gap:4px 18px;
+  }
+  .reference-hero { grid-column:1; grid-row:1; align-self:end; }
+  .reference-logo { font-size:clamp(36px,6.5vw,54px); }
+  .reference-hero h1 { margin-top:3px; font-size:9px; letter-spacing:.08em; line-height:1.45; }
+  .reference-scene { grid-column:1; grid-row:2; }
+  .home-rocket { width:58px; height:124px; }
+  .scene-bot { --crew-size:30px; }
+  .scene-bot--one { left:8%; }
+  .scene-bot--two { left:27%; }
+  .scene-bot--three { right:27%; }
+  .scene-bot--four { right:8%; }
+  .home-control { grid-column:2; grid-row:1/3; align-self:center; padding:9px 11px; }
+  .home-profile-row { grid-template-columns:auto minmax(180px,1fr) minmax(105px,.48fr); gap:8px; }
+  .home-profile-row .crew-avatar { --crew-size:46px; }
+  .compact-name input { height:37px; font-size:13px; }
+  .selected-color-swatch { width:37px; height:37px; }
+  .compact-color output { font-size:9px; }
+  .color-quick-actions { justify-content:center; margin:6px 0; }
+  .color-options-toggle,.random-color-button { min-height:30px; padding:5px 10px; font-size:9px; }
+  .compact-palette { margin:5px 0; }
+  .compact-palette .tone-button { height:22px; }
+  .home-actions { grid-template-columns:1fr; width:min(100%,310px); margin-inline:auto; gap:7px; }
+  .home-actions .primary-button,.home-actions .secondary-button { min-height:40px; padding:7px 12px; font-size:11px; }
+  .room-entry-panel { width:min(100%,310px); margin:6px auto 0; padding-top:6px; }
+  .home-room-status { min-height:12px; margin-top:3px; font-size:8px; }
+  .home-room-note { display:none; }
 }
 
 /* Mission guide popup */

@@ -41,6 +41,7 @@ const session: GameSessionSummary = {
   sessionNumber: 1,
   status: "active",
   questionCount: 12,
+  choiceOrderVersion: 2,
   answerTimeSeconds: 15,
   currentQuestionIndex: 0,
   questionStartedAt: NOW,
@@ -55,6 +56,17 @@ class FakeRepository implements GameRepository {
   startedQuestionCount: number | null = null;
   startedAnswerTimeSeconds: number | null = null;
   sessionToStart: GameSessionSummary = session;
+  sessionResultChoiceOrderVersion = 2;
+  resultRequesterParticipantId = membership.participant.id;
+  resultParticipants: SessionResultSource["participants"] = [{
+    participantId: membership.participant.id,
+    displayName: membership.participant.displayName,
+    role: membership.participant.role,
+    answers: [
+      { questionIndex: 0, selectedOption: 0, responseTimeMs: 500 },
+      { questionIndex: 1, selectedOption: 3, responseTimeMs: 700 },
+    ],
+  }];
 
   healthCheck(): Promise<void> {
     return Promise.resolve();
@@ -127,16 +139,14 @@ class FakeRepository implements GameRepository {
       throw new ApiError(403, "PARTICIPANT_REQUIRED", "A valid participant token is required");
     }
     return Promise.resolve({
-      session: { ...session, status: "completed", finishedAt: NOW },
-      participants: [{
-        participantId: membership.participant.id,
-        displayName: membership.participant.displayName,
-        role: membership.participant.role,
-        answers: [
-          { questionIndex: 0, selectedOption: 0, responseTimeMs: 500 },
-          { questionIndex: 1, selectedOption: 3, responseTimeMs: 700 },
-        ],
-      }],
+      session: {
+        ...session,
+        status: "completed",
+        choiceOrderVersion: this.sessionResultChoiceOrderVersion,
+        finishedAt: NOW,
+      },
+      requesterParticipantId: this.resultRequesterParticipantId,
+      participants: this.resultParticipants,
     });
   }
 
@@ -192,6 +202,10 @@ class FakeRepository implements GameRepository {
   markParticipantDisconnected(participantId: string): Promise<{ roomId: string } | null> {
     this.disconnectedParticipantIds.push(participantId);
     return Promise.resolve({ roomId: membership.room.id });
+  }
+
+  deleteExpiredEmptyRooms(_olderThanMs: number): Promise<string[]> {
+    return Promise.resolve([]);
   }
 }
 
@@ -292,6 +306,20 @@ Deno.test("starting a session requires a bearer token", async () => {
   assert.equal((await response.json()).error.code, "AUTHENTICATION_REQUIRED");
 });
 
+Deno.test("retrieving room participants requires membership", async () => {
+  const app = createApp(new FakeRepository());
+  const unauthenticated = await app(new Request("http://localhost/api/rooms/ABC234"));
+  const authenticated = await app(
+    new Request("http://localhost/api/rooms/ABC234", {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+
+  assert.equal(unauthenticated.status, 401);
+  assert.equal(authenticated.status, 200);
+  assert.equal((await authenticated.json()).data.code, membership.room.code);
+});
+
 Deno.test("starting a room uses the quiz question count and answer time", async () => {
   const repository = new FakeRepository();
   repository.sessionToStart = { ...session, currentQuestionIndex: null, questionStartedAt: null };
@@ -323,7 +351,44 @@ Deno.test("a participant can retrieve the shared room session", async () => {
 });
 
 Deno.test("participants can retrieve ranked shared results", async () => {
-  const response = await createApp(new FakeRepository())(
+  const quizService = createQuizService({
+    secret: "room-results-test-secret-that-is-at-least-32-bytes",
+  });
+  const response = await createApp(new FakeRepository(), { quizService })(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const results = (await response.json()).data;
+  const selectedOptions = Array(session.questionCount).fill(null);
+  selectedOptions[0] = 0;
+  selectedOptions[1] = 3;
+  const expected = await quizService.scoreAnswers(
+    session.questionCount,
+    selectedOptions,
+    SESSION_ID,
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(results.sessionId, SESSION_ID);
+  assert.equal(results.participants[0].displayName, membership.participant.displayName);
+  assert.equal(results.participants[0].answeredCount, 2);
+  assert.equal(results.participants[0].correctCount, expected.correctCount);
+  assert.equal(results.participants[0].power, expected.power);
+  assert.equal(results.participants[0].averageResponseTimeMs, 600);
+  assert.equal(results.personal.participantId, membership.participant.id);
+  assert.equal(results.team.participantCount, 1);
+  assert.equal(results.team.answeredCount, 2);
+  assert.equal(results.team.possibleAnswerCount, session.questionCount);
+});
+
+Deno.test("shared results preserve the choice order used by existing sessions", async () => {
+  const repository = new FakeRepository();
+  repository.sessionResultChoiceOrderVersion = 1;
+  const quizService = createQuizService({
+    secret: "legacy-results-test-secret-that-is-at-least-32-bytes",
+  });
+  const response = await createApp(repository, { quizService })(
     new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
       headers: { authorization: `Bearer ${TOKEN}` },
     }),
@@ -331,11 +396,38 @@ Deno.test("participants can retrieve ranked shared results", async () => {
   const results = (await response.json()).data;
 
   assert.equal(response.status, 200);
-  assert.equal(results.sessionId, SESSION_ID);
-  assert.equal(results.participants[0].displayName, membership.participant.displayName);
-  assert.equal(results.participants[0].answeredCount, 2);
   assert.equal(results.participants[0].correctCount, 2);
-  assert.equal(results.participants[0].averageResponseTimeMs, 600);
+});
+
+Deno.test("personal and team results are derived from all stored participant answers", async () => {
+  const repository = new FakeRepository();
+  const secondParticipantId = "55555555-5555-4555-8555-555555555555";
+  repository.resultRequesterParticipantId = secondParticipantId;
+  repository.resultParticipants = [
+    ...repository.resultParticipants,
+    {
+      participantId: secondParticipantId,
+      displayName: "未回答ユーザー",
+      role: "player",
+      answers: [],
+    },
+  ];
+  const response = await createApp(repository, {
+    quizService: createQuizService({ secret: "team-result-secret-that-is-at-least-32-bytes" }),
+  })(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const results = (await response.json()).data;
+
+  assert.equal(response.status, 200);
+  assert.equal(results.personal.participantId, secondParticipantId);
+  assert.equal(results.personal.power, 0);
+  assert.equal(results.team.participantCount, 2);
+  assert.equal(results.team.answeredCount, 2);
+  assert.equal(results.team.possibleAnswerCount, session.questionCount * 2);
+  assert.equal(results.team.completionRate, 8);
 });
 
 Deno.test("room quiz reveal time follows the shared session clock", async () => {
@@ -467,7 +559,8 @@ Deno.test("quiz API keeps the answer out of question responses", async () => {
   );
   assert.equal(gradeResponse.status, 200);
   const grade = (await gradeResponse.json()).data;
-  assert.equal(grade.correct, true);
-  assert.equal(grade.correctOption, 0);
+  assert.equal(typeof grade.correct, "boolean");
+  assert.ok(Number.isInteger(grade.correctOption));
+  assert.ok(grade.correctOption >= 0 && grade.correctOption <= 3);
   assert.equal(typeof grade.explanation, "string");
 });

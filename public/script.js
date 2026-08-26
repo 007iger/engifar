@@ -1,22 +1,19 @@
+import {
+  calculateOutcome,
+  computeMetrics,
+  FLIGHT_RANKS,
+  getFlightRank,
+  OUTPUT_THRESHOLD,
+  SAFETY_THRESHOLD,
+} from "./game-rules.js";
+
 (() => {
   "use strict";
 
   const STORAGE_KEY = "engifar-mission-v4";
-  const LEGACY_STORAGE_KEY = "engifar-mission-v3";
   const ROOM_AUTH_STORAGE_KEY = "engifar-room-auth-v1";
-  const OUTPUT_THRESHOLD = 60;
-  const SAFETY_THRESHOLD = 75;
   let quizConfig = Object.freeze({ questionCount: 24, answerTimeSeconds: 10, reviewTimeSeconds: 5 });
-  const FLIGHT_RANKS = Object.freeze([
-    { key: "crash", min: 0, name: "不時着級", destination: "海（不時着）", color: "#62e4ec", legs: ["sky", "atmosphere-edge"], crashLanding: true },
-    { key: "space_entry", min: 2800, name: "宇宙突入級", destination: "宇宙空間", color: "#8fe8ff", legs: ["sky", "atmosphere-edge", "space"] },
-    { key: "moon", min: 4200, name: "月面着陸級", destination: "月", color: "#e7e4d7", legs: ["sky", "atmosphere-edge", "space", "space"], approachColor: "oklch(0.88 0.02 90)" },
-    { key: "mars", min: 6500, name: "火星着陸級", destination: "火星", color: "#ff855f", legs: ["sky", "atmosphere-edge", "space", "space"], approachColor: "oklch(0.62 0.19 32)" },
-    { key: "uranus", min: 8500, name: "天王星着陸級", destination: "天王星", color: "#72e3e6", legs: ["sky", "atmosphere-edge", "space", "space"], approachColor: "oklch(0.82 0.09 200)" },
-    { key: "neptune", min: 10500, name: "海王星着陸級", destination: "海王星", color: "#678eff", legs: ["sky", "atmosphere-edge", "space", "space"], approachColor: "oklch(0.5 0.16 262)" },
-    { key: "galaxy", min: 12000, name: "銀河超越級", destination: "新しい銀河", color: "#d58cff", legs: ["sky", "atmosphere-edge", "space", "space", "space"], approachColor: "oklch(0.7 0.16 300)" },
-    { key: "unknown", min: 13500, name: "未知の惑星到達級", destination: "未知の惑星", color: "#ffd36a", legs: ["sky", "atmosphere-edge", "space", "space", "space"], approachColor: "oklch(0.85 0.18 40)" }
-  ]);
+  let authoritativeResults = null;
   const PROFILE_ROLES = Object.freeze({
     "フロントエンド": { role: "INTERFACE CREATOR", copy: "画面の構造・見た目・動きを心地よく組み立てるクルー" },
     "バックエンド": { role: "SERVICE BUILDER", copy: "サービスを支える処理と実行環境を組み立てるクルー" },
@@ -31,6 +28,13 @@
 
   const page = app.dataset.page || "home";
   const reducedMotion = globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (page === "quiz") {
+    globalThis.addEventListener("pageshow", (event) => {
+      // BFCacheから古い回答タイマーを復元せず、保存済みの最新進行へ同期する。
+      if (event.persisted) globalThis.location.reload();
+    });
+  }
 
   function clamp(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
@@ -85,6 +89,31 @@
     return { authorization: `Bearer ${auth.accessToken}` };
   }
 
+  function metricsFromResult(result) {
+    return {
+      power: Math.round(clamp(safeNumber(result.power), 0, 100)),
+      safety: Math.round(clamp(safeNumber(result.safety), 0, 100)),
+      categoryScores: result.categoryScores && typeof result.categoryScores === "object"
+        ? result.categoryScores
+        : {}
+    };
+  }
+
+  async function fetchAuthoritativeResults(auth) {
+    const results = await requestApi(
+      `/api/sessions/${encodeURIComponent(state.room.sessionId)}/results`,
+      { headers: bearerHeaders(auth) }
+    );
+    if (!results.personal || results.personal.participantId !== auth.participantId) {
+      throw new Error("自分の結果を確認できませんでした。");
+    }
+    authoritativeResults = results;
+    state.quiz.index = results.questionCount;
+    state.metrics = metricsFromResult(results.personal);
+    persist(state);
+    return results;
+  }
+
   function connectRoomSocket(auth, onEvent = () => {}, onStatus = () => {}) {
     let socket = null;
     let heartbeatTimer = null;
@@ -104,8 +133,7 @@
       const url = new URL("/ws", globalThis.location.href);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       url.searchParams.set("roomCode", auth.roomCode);
-      url.searchParams.set("token", auth.accessToken);
-      socket = new WebSocket(url);
+      socket = new WebSocket(url, ["engifar-v1", auth.accessToken]);
       onStatus("connecting");
 
       socket.addEventListener("open", () => {
@@ -196,21 +224,7 @@
       };
     }
 
-    let outcome = null;
-    if (source.outcome && Number.isFinite(Number(source.outcome.altitude))) {
-      const reachedOrbit = typeof source.outcome.reachedOrbit === "boolean"
-        ? source.outcome.reachedOrbit
-        : Boolean(source.outcome.success);
-      outcome = {
-        reachedOrbit,
-        kind: reachedOrbit ? "orbit" : "spark",
-        altitude: Math.max(0, Math.round(safeNumber(source.outcome.altitude))),
-        title: String(source.outcome.title || ""),
-        rankKey: String(source.outcome.rankKey || ""),
-        rankName: String(source.outcome.rankName || ""),
-        destination: String(source.outcome.destination || "")
-      };
-    }
+    const outcome = source.outcome && metrics ? calculateOutcome(metrics) : null;
 
     const name = String(playerSource.name || "CREW MEMBER").trim().slice(0, 18) || "CREW MEMBER";
     return {
@@ -238,16 +252,6 @@
     };
   }
 
-  function readHashState() {
-    try {
-      const parameters = new URLSearchParams(globalThis.location.hash.slice(1));
-      const payload = parameters.get("mission");
-      return payload ? normalizeState(JSON.parse(payload)) : null;
-    } catch {
-      return null;
-    }
-  }
-
   function readStoredState(key) {
     try {
       const value = globalThis.sessionStorage.getItem(key);
@@ -258,14 +262,7 @@
   }
 
   function loadState() {
-    const candidates = [
-      readStoredState(STORAGE_KEY),
-      readHashState(),
-      readStoredState(LEGACY_STORAGE_KEY)
-    ].filter(Boolean);
-    if (!candidates.length) return createDefaultState();
-    candidates.sort((a, b) => safeNumber(b.updatedAt) - safeNumber(a.updatedAt));
-    return candidates[0];
+    return readStoredState(STORAGE_KEY) || createDefaultState();
   }
 
   let state = loadState();
@@ -277,41 +274,38 @@
     try {
       globalThis.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-      // URL hash remains available as a portable fallback.
+      // Storageが使えない場合も、状態をURLへ露出させず現在のページ内でのみ続行する。
     }
     return state;
   }
 
-  function stateHash(nextState = state) {
-    return `#mission=${encodeURIComponent(JSON.stringify(nextState))}`;
+  function goTo(path, nextState = state, replace = false) {
+    persist(nextState);
+    if (replace) globalThis.location.replace(path);
+    else globalThis.location.assign(path);
   }
 
-  function goTo(path, nextState = state) {
-    const saved = persist(nextState);
-    globalThis.location.href = `${path}${stateHash(saved)}`;
-  }
-
-  function setStateLink(element, path, nextState = state) {
-    if (element) element.href = `${path}${stateHash(nextState)}`;
+  function setStateLink(element, path) {
+    if (element) element.href = path;
   }
 
   function requirePlayer() {
     if (state.playerConfigured) return true;
-    goTo("./index.html", state);
+    goTo("./index.html", state, true);
     return false;
   }
 
   function requireMetrics() {
     if (!requirePlayer()) return false;
-    if (state.metrics) return true;
-    goTo("./quiz.html", state);
+    if (state.quiz.index >= quizConfig.questionCount && state.metrics) return true;
+    goTo("./quiz.html", state, true);
     return false;
   }
 
   function requireOutcome() {
     if (!requireMetrics()) return false;
     if (state.outcome) return true;
-    goTo("./rocket.html", state);
+    goTo("./rocket.html", state, true);
     return false;
   }
 
@@ -369,6 +363,10 @@
     const hueSlider = document.querySelector("#hue-slider");
     const palette = document.querySelector("#tone-palette");
     const colorCode = document.querySelector("#color-code");
+    const colorSwatch = document.querySelector("#selected-color-swatch");
+    const colorOptionsToggle = document.querySelector("#color-options-toggle");
+    const colorOptionsPanel = document.querySelector("#color-options-panel");
+    const randomColorButton = document.querySelector("#random-color-button");
     const preview = document.querySelector("#player-preview");
     const joinToggle = document.querySelector("#join-room-button");
     const joinPanel = document.querySelector("#join-room-panel");
@@ -377,8 +375,9 @@
     const roomCode = document.querySelector("#room-code");
     const roomStatus = document.querySelector("#home-room-status");
     if (
-      !nameInput || !colorInput || !hueSlider || !palette || !joinToggle || !joinPanel ||
-      !createButton || !joinButton || !roomCode || !roomStatus
+      !nameInput || !colorInput || !hueSlider || !palette || !colorSwatch ||
+      !colorOptionsToggle || !colorOptionsPanel || !randomColorButton || !joinToggle ||
+      !joinPanel || !createButton || !joinButton || !roomCode || !roomStatus
     ) return;
 
     nameInput.value = state.player.name;
@@ -398,6 +397,7 @@
       const color = normalizeColor(value);
       colorInput.value = color;
       colorCode.value = color.toUpperCase();
+      colorSwatch.style.setProperty("--swatch-color", color);
       preview.style.setProperty("--crew-color", color);
       if (syncHue) hueSlider.value = String(rgbToHsl(hexToRgb(color)).h);
       document.documentElement.style.setProperty("--selected-hue", hueSlider.value);
@@ -435,6 +435,16 @@
     });
 
     hueSlider.addEventListener("input", () => renderPalette(true));
+    colorOptionsToggle.addEventListener("click", () => {
+      const expanded = colorOptionsPanel.hidden;
+      colorOptionsPanel.hidden = !expanded;
+      colorOptionsToggle.setAttribute("aria-expanded", String(expanded));
+      colorOptionsToggle.textContent = expanded ? "色設定を閉じる" : "色を変更";
+    });
+    randomColorButton.addEventListener("click", () => {
+      hueSlider.value = String(Math.floor(Math.random() * 360));
+      renderPalette(true);
+    });
 
     async function enterRoom(mode) {
       if (createButton.disabled || joinButton.disabled) return;
@@ -510,6 +520,10 @@
 
   function initRoom() {
     if (!requirePlayer()) return;
+    if (state.status !== "room" && !state.room.sessionId) {
+      goTo("./index.html", state, true);
+      return;
+    }
     const playerAvatar = document.querySelector("#room-player-avatar");
     const playerList = document.querySelector("#room-player-list");
     const roomCodeValue = document.querySelector("#room-code-value");
@@ -588,7 +602,10 @@
       if (refreshing || enteredQuiz) return;
       refreshing = true;
       try {
-        const room = await requestApi(`/api/rooms/${encodeURIComponent(state.room.code)}`);
+        const room = await requestApi(
+          `/api/rooms/${encodeURIComponent(state.room.code)}`,
+          { headers: bearerHeaders(auth) }
+        );
         renderParticipants(room.participants);
         lobbyStatus.textContent = "サーバーに接続済み";
         lobbyStatus.dataset.kind = "connected";
@@ -650,7 +667,8 @@
     );
 
     void refreshRoom();
-    globalThis.setInterval(() => void refreshRoom(), 5_000);
+    // 参加・開始通知はWebSocketで受け、15秒ごとの取得は通知を逃した場合の復旧用にする。
+    globalThis.setInterval(() => void refreshRoom(), 15_000);
   }
 
   function initGuide() {
@@ -732,45 +750,6 @@
     return "BASIC";
   }
 
-  function computeMetrics(records) {
-    const completedRecords = records.filter((record) =>
-      record && typeof record.category === "string" && Number.isFinite(Number(record.weight))
-    );
-    const categories = [...new Set(completedRecords.map((record) => record.category))];
-    let correctWeight = 0;
-    let totalWeight = 0;
-    const categoryScores = {};
-
-    completedRecords.forEach((record) => {
-      const weight = Math.max(0, safeNumber(record.weight));
-      totalWeight += weight;
-      if (record.correct) correctWeight += weight;
-    });
-
-    categories.forEach((category) => {
-      let categoryCorrect = 0;
-      let categoryTotal = 0;
-      completedRecords.forEach((record) => {
-        if (record.category !== category) return;
-        const weight = Math.max(0, safeNumber(record.weight));
-        categoryTotal += weight;
-        if (record.correct) categoryCorrect += weight;
-      });
-      categoryScores[category] = categoryTotal
-        ? Math.round((categoryCorrect / categoryTotal) * 100)
-        : 0;
-    });
-
-    const power = totalWeight ? Math.round((correctWeight / totalWeight) * 100) : 0;
-    const safety = categories.length
-      ? Math.round(
-        categories.reduce((sum, category) => sum + categoryScores[category], 0) /
-          categories.length
-      )
-      : 0;
-    return { power, safety, categoryScores };
-  }
-
   function runClock(seconds, onTick, onComplete) {
     const startedAt = performance.now();
     let requestId = 0;
@@ -809,6 +788,13 @@
     let answerQueue = Promise.resolve();
     let syncTimer = null;
 
+    globalThis.addEventListener("pagehide", () => {
+      finished = true;
+      phaseToken += 1;
+      cancelClock();
+      if (syncTimer !== null) globalThis.clearInterval(syncTimer);
+    }, { once: true });
+
     function launchRoomCorrectConfetti() {
       document.querySelectorAll(".correct-confetti").forEach((effect) => effect.remove());
       const effect = document.createElement("div");
@@ -841,17 +827,26 @@
         : Date.now();
     }
 
-    function finishQuiz() {
-      if (finished) return;
-      finished = true;
-      phaseToken += 1;
-      cancelClock();
-      if (syncTimer !== null) globalThis.clearInterval(syncTimer);
-      state.quiz.index = quizConfig.questionCount;
-      state.metrics = computeMetrics(state.quiz.records);
-      state.outcome = null;
-      state.status = "rocket";
-      goTo("./rocket.html", state);
+    let finishing = false;
+    async function finishQuiz() {
+      if (finished || finishing) return;
+      finishing = true;
+      try {
+        await fetchAuthoritativeResults(auth);
+        finished = true;
+        phaseToken += 1;
+        cancelClock();
+        if (syncTimer !== null) globalThis.clearInterval(syncTimer);
+        state.outcome = null;
+        state.status = "rocket";
+        goTo("./rocket.html", state, true);
+      } catch (error) {
+        elements.feedbackIcon.textContent = "!";
+        elements.feedbackTitle.textContent = "結果を取得できませんでした";
+        elements.feedbackText.textContent = `${error.message} 自動的に再試行します。`;
+      } finally {
+        finishing = false;
+      }
     }
 
     async function createAttemptIfNeeded() {
@@ -937,7 +932,9 @@
       }
     }
 
-    async function showReview(index, token, session) {
+    // reviewEndsAtは正解表示の見た目のカウントダウンにのみ使う(進行の主導権はサーバーのsleepが持つ)。
+    // WSの question_ended から直接渡された場合は絶対時刻が正確、それ以外(壁時計フォールバック)は概算値。
+    async function showReview(index, token, reviewEndsAt) {
       if (
         finished || token !== phaseToken || reviewingIndex === index ||
         state.quiz.index !== index || !currentQuestionToken
@@ -961,8 +958,7 @@
       }
       if (token !== phaseToken) return;
 
-      const nextQuestionAt = answerEndTime(session) + quizConfig.reviewTimeSeconds * 1000;
-      const remainingSeconds = Math.max(0.05, (nextQuestionAt - Date.now()) / 1000);
+      const remainingSeconds = Math.max(0.05, (reviewEndsAt - Date.now()) / 1000);
       cancelClock = runClock(
         remainingSeconds,
         (shown, ratio) => {
@@ -1058,6 +1054,8 @@
           elements.answers.append(button);
         });
 
+        // 通常はWSのquestion_endedで即座にshowReviewへ進む。ここは、そのWS通知を
+        // 受け取れなかった場合の壁時計フォールバック(reviewEndsAtは概算値)。
         const remainingSeconds = Math.max(0.05, (answerEndTime(session) - Date.now()) / 1000);
         cancelClock = runClock(
           remainingSeconds,
@@ -1065,7 +1063,7 @@
             elements.timerValue.textContent = String(shown);
             elements.timer.style.setProperty("--timer-progress", String(ratio));
           },
-          () => void showReview(index, token, session)
+          () => void showReview(index, token, Date.now() + quizConfig.reviewTimeSeconds * 1000)
         );
       } catch (error) {
         if (token !== phaseToken) return;
@@ -1091,7 +1089,7 @@
 
         if (session.status === "completed") {
           await catchUpTo(session.questionCount);
-          finishQuiz();
+          await finishQuiz();
           return;
         }
         if (session.currentQuestionIndex === null) return;
@@ -1099,11 +1097,14 @@
         await catchUpTo(session.currentQuestionIndex);
         if (state.quiz.index === session.currentQuestionIndex) {
           await renderQuestion(session);
+          // WSのquestion_endedを取りこぼした場合の壁時計フォールバック(reviewEndsAtは概算値)。
           if (
             currentRenderedIndex === session.currentQuestionIndex &&
             reviewingIndex !== session.currentQuestionIndex && Date.now() >= answerEndTime(session)
           ) {
-            await showReview(session.currentQuestionIndex, phaseToken, session);
+            const fallbackReviewEndsAt = answerEndTime(session) +
+              quizConfig.reviewTimeSeconds * 1000;
+            await showReview(session.currentQuestionIndex, phaseToken, fallbackReviewEndsAt);
           }
         }
       } catch (error) {
@@ -1117,11 +1118,8 @@
 
     try {
       await createAttemptIfNeeded();
-      currentSession = await requestApi(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-        headers: bearerHeaders(auth)
-      });
-      elements.total.textContent = String(currentSession.questionCount);
       await syncSession();
+      if (currentSession) elements.total.textContent = String(currentSession.questionCount);
     } catch (error) {
       elements.feedbackTitle.textContent = "ルームのクイズを開始できませんでした";
       elements.feedbackText.textContent = error.message;
@@ -1130,14 +1128,20 @@
 
     if (!finished) {
       connectRoomSocket(auth, (event) => {
-        if (
-          event.type === "question_started" || event.type === "question_ended" ||
-          event.type === "all_questions_done"
-        ) {
+        if (event.type === "question_started" || event.type === "all_questions_done") {
+          void syncSession();
+          return;
+        }
+        if (event.type === "question_ended") {
+          // ポーリングや壁時計チェックを待たず、受信した瞬間に答え合わせへ進める。
+          // まだ描画が追いついていない場合はshowReview内のガードで無視され、
+          // 直後のsyncSessionで通常の追いつき処理に任せる。
+          void showReview(event.questionIndex, phaseToken, event.reviewEndsAt);
           void syncSession();
         }
       });
-      syncTimer = globalThis.setInterval(() => void syncSession(), 2_000);
+      // WebSocketを通常経路とし、取りこぼし・別インスタンス時だけ10秒ごとに復旧する。
+      syncTimer = globalThis.setInterval(() => void syncSession(), 10_000);
     }
   }
 
@@ -1178,6 +1182,33 @@
       return;
     }
 
+    if (state.quiz.index >= quizConfig.questionCount) {
+      if (state.room.sessionId) {
+        const roomAuth = loadRoomAuth(state.room.code);
+        if (!roomAuth) {
+          goTo("./index.html", state, true);
+          return;
+        }
+        try {
+          await fetchAuthoritativeResults(roomAuth);
+        } catch (error) {
+          elements.feedbackTitle.textContent = "結果を取得できませんでした";
+          elements.feedbackText.textContent = error.message;
+          return;
+        }
+      } else if (!state.metrics) {
+        state.metrics = computeMetrics(state.quiz.records);
+        persist(state);
+      }
+      goTo("./rocket.html", state, true);
+      return;
+    }
+
+    if (state.status !== "quiz") {
+      goTo(state.status === "room" ? "./room.html" : "./index.html", state, true);
+      return;
+    }
+
     if (state.room.sessionId) {
       const roomAuth = loadRoomAuth(state.room.code);
       if (!roomAuth) {
@@ -1186,15 +1217,6 @@
         return;
       }
       await initMultiplayerQuiz(elements, roomAuth);
-      return;
-    }
-
-    if (state.quiz.index >= quizConfig.questionCount) {
-      if (!state.metrics) {
-        state.metrics = computeMetrics(state.quiz.records);
-        persist(state);
-      }
-      goTo("./rocket.html", state);
       return;
     }
 
@@ -1222,6 +1244,11 @@
     let questionToken = null;
     let cancelClock = () => {};
     let phaseToken = 0;
+
+    globalThis.addEventListener("pagehide", () => {
+      phaseToken += 1;
+      cancelClock();
+    }, { once: true });
 
     function launchCorrectConfetti() {
       document.querySelectorAll(".correct-confetti").forEach((effect) => effect.remove());
@@ -1255,7 +1282,7 @@
       state.metrics = computeMetrics(state.quiz.records);
       state.outcome = null;
       state.status = "rocket";
-      goTo("./rocket.html", state);
+      goTo("./rocket.html", state, true);
     }
 
     async function showReview(token) {
@@ -1410,37 +1437,6 @@
     void renderQuestion();
   }
 
-  function getFlightRank(altitude) {
-    const height = Math.max(0, safeNumber(altitude));
-    return [...FLIGHT_RANKS].reverse().find((rank) => height >= rank.min) || FLIGHT_RANKS[0];
-  }
-
-  function calculateOutcome(metrics) {
-    const power = clamp(safeNumber(metrics.power), 0, 100);
-    const safety = clamp(safeNumber(metrics.safety), 0, 100);
-    const reachedOrbit = power >= OUTPUT_THRESHOLD && safety >= SAFETY_THRESHOLD;
-    const altitude = reachedOrbit
-      ? Math.round(6200 + power * 48 + safety * 30)
-      : Math.round(800 + power * 48 + safety * 25);
-    const average = (power + safety) / 2;
-
-    let title = "空へ一歩、ナイスフライト！";
-    if (reachedOrbit) title = "軌道到達！";
-    else if (average >= 72) title = "星空手前で大きなきらめき！";
-    else if (average >= 48) title = "雲の上までフライト！";
-
-    const rank = getFlightRank(altitude);
-    return {
-      reachedOrbit,
-      kind: reachedOrbit ? "orbit" : "spark",
-      altitude,
-      title,
-      rankKey: rank.key,
-      rankName: rank.name,
-      destination: rank.destination
-    };
-  }
-
   function initRocket() {
     if (!requireMetrics()) return;
     const elements = {
@@ -1510,7 +1506,8 @@
       if (running) return; running = true; showScreen(elements.launch); setSkyLeg("ground"); elements.ground.classList.remove("is-hidden"); elements.rocket.className = "rl-rocket-wrap"; elements.approach.classList.remove("is-visible"); setCaption("");
       await boardBots(); await bounceRocket(); await igniteRocket(); await liftoffRocket(); await flyThrough(); showResult(); running = false;
     }
-    elements.launchButton.addEventListener("click", runLaunchSequence);
+    if (state.outcome) showResult();
+    else elements.launchButton.addEventListener("click", runLaunchSequence);
     elements.resultButton.addEventListener("click", () => goTo("./result.html", state));
   }
 
@@ -1659,10 +1656,10 @@
     const crewResultsList = document.querySelector("#crew-results-list");
     if (auth && crewResults && crewResultsStatus && crewResultsList) {
       crewResults.hidden = false;
-      void requestApi(
-        `/api/sessions/${encodeURIComponent(state.room.sessionId)}/results`,
-        { headers: bearerHeaders(auth) }
-      ).then((results) => {
+      const resultsPromise = authoritativeResults
+        ? Promise.resolve(authoritativeResults)
+        : fetchAuthoritativeResults(auth);
+      void resultsPromise.then((results) => {
         crewResultsList.replaceChildren();
         results.participants.forEach((participant) => {
           const item = document.createElement("li");
@@ -1680,8 +1677,10 @@
           item.append(name, detail, score);
           crewResultsList.append(item);
         });
-        crewResultsStatus.hidden = results.participants.length > 0;
-        if (!results.participants.length) crewResultsStatus.textContent = "共有結果はありません。";
+        crewResultsStatus.hidden = false;
+        crewResultsStatus.textContent = results.participants.length
+          ? `チーム出力 ${results.team.power}% / 安全性 ${results.team.safety}% / 回答完了 ${results.team.completionRate}%`
+          : "共有結果はありません。";
       }).catch((error) => {
         crewResultsStatus.textContent = `共有結果を読み込めませんでした。${error.message}`;
       });
@@ -1997,16 +1996,37 @@
     ranks: FLIGHT_RANKS
   });
 
-  if (["rocket", "result", "card"].includes(page) && state.room.sessionId) {
-    const roomAuth = loadRoomAuth(state.room.code);
-    if (roomAuth) connectRoomSocket(roomAuth);
+  async function initAuthoritativeResultPage() {
+    if (state.room.sessionId) {
+      const roomAuth = loadRoomAuth(state.room.code);
+      if (!roomAuth) {
+        goTo("./index.html", state, true);
+        return;
+      }
+      try {
+        await fetchAuthoritativeResults(roomAuth);
+      } catch {
+        state.metrics = null;
+        state.outcome = null;
+        state.status = "quiz";
+        persist(state);
+        goTo("./quiz.html", state, true);
+        return;
+      }
+      if (page === "rocket" && state.status === "rocket") state.outcome = null;
+      else state.outcome = calculateOutcome(state.metrics);
+      persist(state);
+      connectRoomSocket(roomAuth);
+    }
+
+    if (page === "rocket") initRocket();
+    else if (page === "result") initResult();
+    else initCard();
   }
 
   if (page === "home") initHome();
   else if (page === "room") initRoom();
   else if (page === "quiz") void initQuiz();
-  else if (page === "rocket") initRocket();
-  else if (page === "result") initResult();
-  else if (page === "card") initCard();
+  else if (["rocket", "result", "card"].includes(page)) void initAuthoritativeResultPage();
   if (page === "home" || page === "room") initGuide();
 })();

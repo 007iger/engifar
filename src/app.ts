@@ -3,10 +3,25 @@ import { ApiError } from "./errors.ts";
 import type { GameGenre, GameRepository, SessionResults } from "./types.ts";
 import { broadcast, handleWsUpgrade } from "./ws.ts";
 import { scheduleQuestionAdvance, triggerEarlyQuestionEnd } from "./questionLoop.ts";
-import { createQuizService, type QuizService } from "./quiz.ts";
+import {
+  createQuizService,
+  LEGACY_CHOICE_ORDER_VARIANT,
+  type QuizService,
+  safetyFromCategoryScores,
+} from "./quiz.ts";
 
 const MAX_JSON_BODY_BYTES = 16 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SECURITY_HEADERS = Object.freeze({
+  "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; " +
+    "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  "cross-origin-opener-policy": "same-origin",
+  "permissions-policy": "camera=(), geolocation=(), microphone=()",
+  "referrer-policy": "no-referrer",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+});
 
 interface AppOptions {
   staticRoot?: string;
@@ -23,10 +38,17 @@ function json(payload: unknown, status = 200, extraHeaders: HeadersInit = {}): R
     status,
     headers: {
       "cache-control": "no-store",
-      "x-content-type-options": "nosniff",
+      ...SECURITY_HEADERS,
       ...extraHeaders,
     },
   });
+}
+
+function secureStaticResponse(response: Response): Response {
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    response.headers.set(name, value);
+  }
+  return response;
 }
 
 function apiErrorResponse(error: ApiError): Response {
@@ -179,6 +201,10 @@ function questionIndex(rawIndex: string): number {
   return index;
 }
 
+function choiceOrderVariant(session: { id: string; choiceOrderVersion: number }): string {
+  return session.choiceOrderVersion >= 2 ? session.id : LEGACY_CHOICE_ORDER_VARIANT;
+}
+
 async function handleApi(
   request: Request,
   repository: GameRepository,
@@ -289,7 +315,9 @@ async function handleApi(
 
   const roomMatch = pathname.match(/^\/api\/rooms\/([^/]+)$/);
   if (request.method === "GET" && roomMatch) {
-    return json({ data: await repository.getRoom(roomCode(decodeURIComponent(roomMatch[1]))) });
+    const code = roomCode(decodeURIComponent(roomMatch[1]));
+    await repository.authenticateParticipant(code, bearerToken(request));
+    return json({ data: await repository.getRoom(code) });
   }
 
   const sessionResultsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/results$/);
@@ -298,14 +326,18 @@ async function handleApi(
       sessionId(decodeURIComponent(sessionResultsMatch[1])),
       bearerToken(request),
     );
-    const participants = source.participants.map((participant) => {
+    const participants = await Promise.all(source.participants.map(async (participant) => {
       const selectedOptions: (number | null)[] = Array(source.session.questionCount).fill(null);
       for (const answer of participant.answers) {
         if (answer.questionIndex >= 0 && answer.questionIndex < selectedOptions.length) {
           selectedOptions[answer.questionIndex] = answer.selectedOption;
         }
       }
-      const score = quizService.scoreAnswers(source.session.questionCount, selectedOptions);
+      const score = await quizService.scoreAnswers(
+        source.session.questionCount,
+        selectedOptions,
+        choiceOrderVariant(source.session),
+      );
       const responseTimes = participant.answers.map((answer) => answer.responseTimeMs);
       return {
         participantId: participant.participantId,
@@ -319,15 +351,57 @@ async function handleApi(
           )
           : null,
       };
-    });
+    }));
     participants.sort((left, right) =>
       right.power - left.power || right.safety - left.safety ||
       (left.averageResponseTimeMs ?? Number.MAX_SAFE_INTEGER) -
         (right.averageResponseTimeMs ?? Number.MAX_SAFE_INTEGER)
     );
+    const personal = participants.find((participant) =>
+      participant.participantId === source.requesterParticipantId
+    );
+    if (!personal) {
+      throw new ApiError(500, "RESULT_PARTICIPANT_MISSING", "Participant result is missing");
+    }
+    const categoryNames = [
+      ...new Set(participants.flatMap((participant) => Object.keys(participant.categoryScores))),
+    ];
+    const teamCategoryScores = Object.fromEntries(categoryNames.map((category) => [
+      category,
+      participants.length
+        ? Math.round(
+          participants.reduce(
+            (sum, participant) => sum + (participant.categoryScores[category] ?? 0),
+            0,
+          ) / participants.length,
+        )
+        : 0,
+    ]));
+    const answeredCount = participants.reduce(
+      (sum, participant) => sum + participant.answeredCount,
+      0,
+    );
+    const possibleAnswerCount = participants.length * source.session.questionCount;
     const results: SessionResults = {
       sessionId: source.session.id,
       questionCount: source.session.questionCount,
+      personal,
+      team: {
+        participantCount: participants.length,
+        answeredCount,
+        possibleAnswerCount,
+        completionRate: possibleAnswerCount
+          ? Math.round((answeredCount / possibleAnswerCount) * 100)
+          : 0,
+        power: participants.length
+          ? Math.round(
+            participants.reduce((sum, participant) => sum + participant.power, 0) /
+              participants.length,
+          )
+          : 0,
+        safety: safetyFromCategoryScores(Object.values(teamCategoryScores)),
+        categoryScores: teamCategoryScores,
+      },
       participants,
     };
     return json({ data: results });
@@ -339,6 +413,7 @@ async function handleApi(
       data: await repository.getSessionForParticipant(
         sessionId(decodeURIComponent(sessionMatch[1])),
         bearerToken(request),
+        quizService.config.reviewTimeSeconds,
       ),
     });
   }
@@ -351,6 +426,7 @@ async function handleApi(
     const session = await repository.getSessionForParticipant(
       sessionId(multiplayerQuizStartMatch[1]),
       bearerToken(request),
+      quizService.config.reviewTimeSeconds,
     );
     if (
       session.status === "cancelled" || session.currentQuestionIndex === null ||
@@ -373,6 +449,7 @@ async function handleApi(
         requestedIndex,
         quizTokenFrom(body, "progressToken"),
         revealAt,
+        choiceOrderVariant(session),
       ),
     });
   }
@@ -448,7 +525,7 @@ export function createApp(
         const upgraded = await handleWsUpgrade(request, url, repository);
         if (upgraded) return upgraded;
         return apiErrorResponse(
-          new ApiError(400, "WS_PARAMS_REQUIRED", "roomCode and token query params are required"),
+          new ApiError(400, "WS_AUTH_REQUIRED", "WebSocket room and authentication are required"),
         );
       } catch (error) {
         if (error instanceof ApiError) return apiErrorResponse(error);
@@ -484,19 +561,23 @@ export function createApp(
     }
 
     if (pathname.startsWith("/assets/")) {
-      return serveDir(request, {
-        fsRoot: assetRoot,
-        urlRoot: "assets",
-        showDirListing: false,
-        quiet: true,
-      });
+      return secureStaticResponse(
+        await serveDir(request, {
+          fsRoot: assetRoot,
+          urlRoot: "assets",
+          showDirListing: false,
+          quiet: true,
+        }),
+      );
     }
 
-    return serveDir(request, {
-      fsRoot: staticRoot,
-      urlRoot: "",
-      showDirListing: false,
-      quiet: true,
-    });
+    return secureStaticResponse(
+      await serveDir(request, {
+        fsRoot: staticRoot,
+        urlRoot: "",
+        showDirListing: false,
+        quiet: true,
+      }),
+    );
   };
 }
