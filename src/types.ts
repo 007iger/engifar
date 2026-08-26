@@ -156,6 +156,9 @@ export interface GameRepository {
   /** サーバー主導の進行ループ専用(トークン不要)。最後の問題が終わった時にセッションを完了させる。 */
   completeSessionAutomatically(sessionId: string): Promise<GameSessionSummary | null>;
 
+  /** そのセッションにまだ残っている参加者全員が、指定した問題に回答済みかどうか。 */
+  haveAllParticipantsAnswered(sessionId: string, questionIndex: number): Promise<boolean>;
+
   /**
    * WebSocketの切断(正常切断・ハートビート切れの両方)を検知した時に呼ぶ。
    * participant.left_at / session_participant.left_at を更新する。

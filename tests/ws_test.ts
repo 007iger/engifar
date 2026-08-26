@@ -79,6 +79,10 @@ class FakeRepository implements GameRepository {
   completeSessionAutomatically(): Promise<GameSessionSummary | null> {
     return Promise.reject(new Error("not used"));
   }
+  haveAllParticipantsAnswered(): Promise<boolean> {
+    return Promise.reject(new Error("not used"));
+  }
+
   private alreadyDisconnected = new Set<string>();
 
   markParticipantDisconnected(participantId: string): Promise<{ roomId: string } | null> {
