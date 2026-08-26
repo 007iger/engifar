@@ -214,6 +214,15 @@ function choiceOrderVariant(session: { id: string; choiceOrderVersion: number })
   return session.choiceOrderVersion >= 2 ? session.id : LEGACY_CHOICE_ORDER_VARIANT;
 }
 
+function participantChoiceOrderVariant(
+  session: { id: string; choiceOrderVersion: number },
+  participantId: string,
+): string {
+  return session.choiceOrderVersion >= 4
+    ? `${session.id}:${participantId}`
+    : choiceOrderVariant(session);
+}
+
 function needsQuestionTimer(session: {
   status: string;
   questionStartedAt: string | null;
@@ -358,8 +367,9 @@ async function handleApi(
       const score = await quizService.scoreAnswers(
         source.session.questionCount,
         selectedOptions,
-        choiceOrderVariant(source.session),
+        participantChoiceOrderVariant(source.session, participant.participantId),
         questionSetVersionForChoiceOrder(source.session.choiceOrderVersion),
+        participant.questions,
       );
       const responseTimes = participant.answers.map((answer) => answer.responseTimeMs);
       return {
@@ -486,9 +496,10 @@ async function handleApi(
   );
   if (request.method === "POST" && multiplayerQuizStartMatch) {
     const requestedIndex = questionIndex(multiplayerQuizStartMatch[2]);
+    const accessToken = bearerToken(request);
     const session = await repository.getSessionForParticipant(
       sessionId(multiplayerQuizStartMatch[1]),
-      bearerToken(request),
+      accessToken,
       quizService.config.reviewTimeSeconds,
     );
     if (
@@ -503,6 +514,9 @@ async function handleApi(
     }
 
     const body = await readJsonObject(request);
+    const selection = session.choiceOrderVersion >= 4
+      ? await repository.getParticipantQuestionSelection(session.id, accessToken, requestedIndex)
+      : null;
     const revealAt = session.status === "active" &&
         requestedIndex === session.currentQuestionIndex && session.questionStartedAt
       ? Date.parse(session.questionStartedAt) + session.answerTimeSeconds * 1000
@@ -512,9 +526,12 @@ async function handleApi(
         requestedIndex,
         quizTokenFrom(body, "progressToken"),
         revealAt,
-        choiceOrderVariant(session),
+        selection
+          ? participantChoiceOrderVariant(session, selection.participantId)
+          : choiceOrderVariant(session),
         session.answerTimeSeconds,
         questionSetVersionForChoiceOrder(session.choiceOrderVersion),
+        selection?.question,
       ),
     });
   }
@@ -545,9 +562,10 @@ async function handleApi(
   );
   if (request.method === "POST" && multiplayerQuizGradeMatch) {
     const requestedIndex = questionIndex(multiplayerQuizGradeMatch[2]);
+    const accessToken = bearerToken(request);
     const session = await repository.getSessionForParticipant(
       sessionId(multiplayerQuizGradeMatch[1]),
-      bearerToken(request),
+      accessToken,
       quizService.config.reviewTimeSeconds,
     );
     if (session.currentQuestionIndex === null || requestedIndex > session.currentQuestionIndex) {
@@ -564,12 +582,16 @@ async function handleApi(
       ? Date.parse(session.questionReviewStartedAt)
       : undefined;
     const body = await readJsonObject(request);
+    const selection = session.choiceOrderVersion >= 4
+      ? await repository.getParticipantQuestionSelection(session.id, accessToken, requestedIndex)
+      : null;
     return json({
       data: await quizService.gradeQuestion(
         requestedIndex,
         quizTokenFrom(body, "questionToken"),
         quizSelectedOptionFrom(body),
         trustedRevealAt,
+        selection?.question,
       ),
     });
   }

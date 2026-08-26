@@ -23,7 +23,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
   // WebSocket notifications are process-local. Poll within the five-second review window so
   // clients connected to another instance can still render the answer before the next question.
   const ACTIVE_QUIZ_SYNC_INTERVAL_MS = 1_000;
-  let quizConfig = Object.freeze({ questionCount: 24, answerTimeSeconds: 10, reviewTimeSeconds: 5 });
+  let quizConfig = Object.freeze({ questionCount: 24, answerTimeSeconds: 15, reviewTimeSeconds: 5 });
   let authoritativeResults = null;
   const PROFILE_ROLES = Object.freeze({
     "フロントエンド": { role: "INTERFACE CREATOR", copy: "画面の構造・見た目・動きを心地よく組み立てるクルー" },
@@ -773,7 +773,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
               <figure class="guide-image"><img src="./assets/tutorial/room.png" alt="ロケットの周りにクルーが集まるルーム画面"></figure>
             </li>
             <li class="guide-step">
-              <div class="guide-step-copy"><b>3</b><div><h3>Web基礎クイズに回答</h3><p>1問10秒。時間内は回答を変更でき、その後5秒間で答えを確認します。</p></div></div>
+              <div class="guide-step-copy"><b>3</b><div><h3>Web基礎クイズに回答</h3><p>1問15秒。時間内は回答を変更でき、その後5秒間で答えを確認します。</p></div></div>
               <figure class="guide-image"><img src="./assets/tutorial/quiz.png" alt="四つの選択肢から回答するクイズ画面"></figure>
             </li>
             <li class="guide-step">

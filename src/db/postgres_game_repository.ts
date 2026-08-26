@@ -7,6 +7,7 @@ import type {
   GameRepository,
   GameSessionSummary,
   MembershipResult,
+  ParticipantQuestionSelection,
   ParticipantRole,
   ParticipantSummary,
   RoomDetail,
@@ -74,6 +75,19 @@ interface SessionResultRow extends QueryResultRow {
   response_time_ms: number | null;
 }
 
+interface ParticipantQuestionRow extends QueryResultRow {
+  participant_id: string;
+  id: string;
+  category: string;
+  weight: number;
+  answer_time_seconds: number;
+  instruction: string;
+  question: string;
+  choices: string[];
+  correct_option: number;
+  explanation: string;
+}
+
 interface AuthorizedResultSessionRow extends SessionRow {
   requester_participant_id: string;
 }
@@ -88,6 +102,23 @@ interface AuthorizedSessionRow extends TimedSessionRow {
 
 function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function mapParticipantQuestion(row: ParticipantQuestionRow): ParticipantQuestionSelection {
+  return {
+    participantId: row.participant_id,
+    question: {
+      id: row.id,
+      category: row.category,
+      weight: row.weight,
+      answerTimeSeconds: row.answer_time_seconds,
+      instruction: row.instruction,
+      question: row.question,
+      choices: row.choices,
+      answer: row.correct_option,
+      explanation: row.explanation,
+    },
+  };
 }
 
 function mapRoom(row: RoomRow): RoomSummary {
@@ -412,7 +443,7 @@ export class PostgresGameRepository implements GameRepository {
       );
       const session = sessionResult.rows[0];
 
-      await client.query(
+      const participantSnapshot = await client.query(
         `INSERT INTO session_participant (
            game_session_id,
            participant_id,
@@ -422,9 +453,50 @@ export class PostgresGameRepository implements GameRepository {
          )
          SELECT $1, id, room_id, display_name, role
          FROM participant
-         WHERE room_id = $2 AND left_at IS NULL`,
+         WHERE room_id = $2 AND left_at IS NULL
+         RETURNING participant_id`,
         [session.id, room.id],
       );
+      const selectedQuestions = await client.query(
+        `WITH categories(category, category_order) AS (
+           VALUES
+             ('フロントエンド', 1), ('バックエンド', 2), ('データベース', 3),
+             ('API', 4), ('インフラ', 5), ('セキュリティ', 6)
+         ), ranked AS (
+           SELECT sp.game_session_id, sp.participant_id, category.category_order,
+             question.id AS question_id, question.difficulty,
+             row_number() OVER (
+               PARTITION BY sp.participant_id, question.category, question.difficulty
+               ORDER BY random()
+             ) AS difficulty_rank
+           FROM session_participant sp
+           CROSS JOIN categories category
+           JOIN quiz_question question
+             ON question.category = category.category
+            AND question.active
+           WHERE sp.game_session_id = $1
+         ), selected AS (
+           SELECT *, (row_number() OVER (
+             PARTITION BY participant_id
+             ORDER BY category_order, difficulty, difficulty_rank
+           ) - 1)::smallint AS question_index
+           FROM ranked
+           WHERE difficulty_rank <= CASE difficulty WHEN 1 THEN 1 WHEN 2 THEN 2 ELSE 1 END
+         )
+         INSERT INTO session_participant_question (
+           game_session_id, participant_id, question_index, question_id
+         )
+         SELECT game_session_id, participant_id, question_index, question_id
+         FROM selected
+         RETURNING question_id`,
+        [session.id],
+      );
+      const expectedSelectionCount = (participantSnapshot.rowCount ?? 0) * questionCount;
+      if (selectedQuestions.rowCount !== expectedSelectionCount) {
+        throw new Error(
+          `Quiz question bank is incomplete: selected ${selectedQuestions.rowCount} of ${expectedSelectionCount}`,
+        );
+      }
       await client.query(
         `UPDATE room SET status = 'playing', updated_at = now() WHERE id = $1`,
         [room.id],
@@ -467,6 +539,32 @@ export class PostgresGameRepository implements GameRepository {
       return await this.reconcileOverdueSession(session, reviewTimeSeconds);
     }
     return mapSession(session);
+  }
+
+  async getParticipantQuestionSelection(
+    sessionId: string,
+    accessToken: string,
+    questionIndex: number,
+  ): Promise<ParticipantQuestionSelection> {
+    const tokenHash = await hashAccessToken(accessToken);
+    const result = await this.pool.query<ParticipantQuestionRow>(
+      `SELECT selection.participant_id, question.id, question.category, question.weight,
+         question.answer_time_seconds, question.instruction, question.question,
+         question.choices, question.correct_option, question.explanation
+       FROM session_participant_question selection
+       JOIN participant participant ON participant.id = selection.participant_id
+       JOIN quiz_question question ON question.id = selection.question_id
+       WHERE selection.game_session_id = $1
+         AND participant.access_token_hash = $2
+         AND participant.left_at IS NULL
+         AND selection.question_index = $3`,
+      [sessionId, tokenHash, questionIndex],
+    );
+    const selection = result.rows[0];
+    if (!selection) {
+      throw new ApiError(404, "QUIZ_QUESTION_NOT_FOUND", "Stored quiz question not found");
+    }
+    return mapParticipantQuestion(selection);
   }
 
   async getSessionResultSource(
@@ -515,6 +613,7 @@ export class PostgresGameRepository implements GameRepository {
           displayName: row.display_name_snapshot,
           role: row.role_snapshot,
           resultPublished: row.result_published,
+          questions: [],
           answers: [],
         };
         participants.set(row.participant_id, participant);
@@ -526,6 +625,27 @@ export class PostgresGameRepository implements GameRepository {
           responseTimeMs: row.response_time_ms ?? 0,
         });
       }
+    }
+
+    const questionResult = await this.pool.query<
+      ParticipantQuestionRow & {
+        question_index: number;
+      }
+    >(
+      `SELECT selection.participant_id, selection.question_index,
+         question.id, question.category, question.weight, question.answer_time_seconds,
+         question.instruction, question.question, question.choices,
+         question.correct_option, question.explanation
+       FROM session_participant_question selection
+       JOIN quiz_question question ON question.id = selection.question_id
+       WHERE selection.game_session_id = $1
+       ORDER BY selection.participant_id, selection.question_index`,
+      [sessionId],
+    );
+    for (const question of questionResult.rows) {
+      participants.get(question.participant_id)?.questions?.push(
+        mapParticipantQuestion(question).question,
+      );
     }
 
     return {
