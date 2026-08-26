@@ -119,6 +119,34 @@ Deno.test("multiplayer flight results use the shared team metrics", async () => 
   assert.match(source, /resultCopy\(state\.outcome, state\.teamMetrics \|\| state\.metrics\)/);
 });
 
+Deno.test("result views are split and code questions preserve readable indentation", async () => {
+  const source = await Deno.readTextFile("public/script.js");
+  const style = await Deno.readTextFile("public/style.css");
+  const resultHtml = await Deno.readTextFile("public/result.html");
+
+  assert.match(resultHtml, /id="result-view-tabs"[^>]+role="tablist"/);
+  assert.match(resultHtml, /data-result-view="flight"/);
+  assert.match(resultHtml, /data-result-view="team"/);
+  assert.match(resultHtml, /id="result-flight-pane"[^>]+role="tabpanel"/);
+  assert.match(resultHtml, /id="crew-results"[^>]+role="tabpanel"/);
+  assert.match(source, /function activateResultView\(view, moveFocus = false\)/);
+  assert.match(source, /flightPane\.hidden = showTeam;/);
+  assert.match(source, /crewResults\.hidden = !showTeam;/);
+  assert.match(
+    style,
+    /\.question-copy pre\s*\{[\s\S]*?text-align: left;[\s\S]*?white-space: pre-wrap;[\s\S]*?tab-size: 2;/,
+  );
+
+  for (const page of ["index", "room", "quiz", "rocket", "result", "card"]) {
+    const html = await Deno.readTextFile(`public/${page}.html`);
+    assert.match(html, /script\.js\?v=20260826-result-split/);
+  }
+  for (const page of ["index", "room", "quiz", "result", "card"]) {
+    const html = await Deno.readTextFile(`public/${page}.html`);
+    assert.match(html, /style\.css\?v=20260826-result-split/);
+  }
+});
+
 Deno.test("static pages include baseline browser security headers", async () => {
   const response = await responseFor("/index.html");
 

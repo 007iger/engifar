@@ -970,7 +970,7 @@ a {
 }
 
 .question-copy pre {
-  overflow: hidden;
+  overflow: auto;
   margin: 0;
   min-height: 64px;
   padding: 14px 16px;
@@ -979,9 +979,10 @@ a {
   color: var(--lime);
   background: rgba(13, 28, 18, .72);
   font: 800 clamp(13px, 1.7vw, 18px)/1.5 ui-monospace, "Cascadia Code", "Yu Gothic UI", monospace;
-  text-align: center;
+  text-align: left;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  tab-size: 2;
 }
 
 .answer-grid {
@@ -1759,6 +1760,51 @@ a {
   background: linear-gradient(145deg, rgba(17, 36, 57, .94), rgba(7, 17, 31, .96));
   box-shadow: 0 24px 70px rgba(0,0,0,.38);
   animation: panel-enter .55s ease both;
+}
+
+.result-view-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin-bottom: 11px;
+  padding: 4px;
+  border: 1px solid rgba(98, 228, 236, .2);
+  border-radius: 13px;
+  background: rgba(3, 12, 24, .62);
+}
+
+.result-view-tab {
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  transition: color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+
+.result-view-tab:hover,
+.result-view-tab:focus-visible {
+  color: var(--text);
+  outline: 1px solid rgba(98, 228, 236, .48);
+}
+
+.result-view-tab.is-active {
+  color: #07111f;
+  background: linear-gradient(135deg, var(--cyan), var(--lime));
+  box-shadow: 0 4px 14px rgba(98, 228, 236, .16);
+}
+
+.result-view-pane {
+  min-width: 0;
+  animation: result-pane-enter .2s ease both;
+}
+
+@keyframes result-pane-enter {
+  from { opacity: 0; transform: translateY(4px); }
 }
 
 .result-panel h1 {
@@ -3158,6 +3204,7 @@ a {
 .result-data-grid .result-metrics dd b { font-size:clamp(24px,3vw,34px); }
 .result-data-grid .metric-altitude dd b { font-size:clamp(18px,2.7vw,30px); letter-spacing:-.05em; }
 .crew-results { margin:-3px 0 9px; padding:8px 10px; border:1px solid rgba(201,247,101,.25); border-radius:12px; background:rgba(4,13,25,.58); }
+.crew-results.result-view-pane { margin:0 0 9px; padding:12px; }
 .crew-results header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .crew-results header span { color:var(--lime); font-size:8px; font-weight:900; letter-spacing:.12em; }
 .crew-results header strong { font-size:11px; }
@@ -3171,7 +3218,7 @@ a {
 .result-privacy-control { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:7px; }
 .result-privacy-control .secondary-button { min-height:30px; padding:5px 10px; font-size:8px; white-space:nowrap; }
 .result-privacy-control small { flex-basis:100%; color:var(--quiet); font-size:7px; line-height:1.4; }
-.crew-results ol { display:grid; gap:4px; max-height:86px; margin-top:6px; padding:0; overflow:auto; list-style:none; counter-reset:crew-rank; }
+.crew-results ol { display:grid; gap:4px; max-height:132px; margin-top:6px; padding:0; overflow:auto; list-style:none; counter-reset:crew-rank; }
 .crew-results li { counter-increment:crew-rank; display:grid; grid-template-columns:22px minmax(0,1fr) auto auto; align-items:center; gap:6px; padding:5px 7px; border-radius:8px; background:rgba(98,228,236,.06); font-size:9px; }
 .crew-results li::before { content:counter(crew-rank); color:var(--cyan); font-weight:900; text-align:center; }
 .crew-results li.is-you { outline:1px solid rgba(201,247,101,.38); background:rgba(201,247,101,.08); }
@@ -3205,7 +3252,8 @@ a {
   .result-panel h1{font-size:clamp(22px,7vw,30px)}
   .result-avatar .crew-avatar{--crew-size:32px}
   .result-rank-row{padding:6px 8px}.result-data-grid{grid-template-columns:minmax(150px,1.08fr) minmax(116px,.72fr);gap:5px;margin:6px 0}.radar-chart{max-height:174px}.radar-label{font-size:8px}.result-data-grid .result-metrics{gap:4px}.result-data-grid .result-metrics>div{padding:6px 8px;border-radius:10px}.result-data-grid .result-metrics dt{font-size:8px}.result-data-grid .result-metrics dt small{display:none}.result-data-grid .result-metrics dd{margin-top:2px}.result-data-grid .result-metrics dd b{font-size:20px}.result-data-grid .metric-altitude dd b{font-size:15px}.result-data-grid .result-metrics dd span{font-size:8px}.radar-card figcaption{display:none}
-  .crew-results{margin-bottom:6px;padding:6px 7px}.crew-results ol{max-height:58px}.crew-results li{grid-template-columns:18px minmax(0,1fr) auto;padding:4px 5px}.crew-results-detail{display:none}
+  .result-view-tabs{margin-bottom:7px;padding:3px}.result-view-tab{min-height:32px;padding:5px 7px;font-size:9px}
+  .crew-results{margin-bottom:6px;padding:6px 7px}.crew-results.result-view-pane{padding:8px}.crew-results ol{max-height:92px}.crew-results li{grid-template-columns:18px minmax(0,1fr) auto;padding:4px 5px}.crew-results-detail{display:none}
 }
 
 @media (max-height:620px) and (min-width:700px) {
@@ -3220,6 +3268,7 @@ a {
   .result-panel h1{font-size:24px;margin-block:4px}
   .result-rank-row{margin-top:3px;padding:5px 8px}
   .result-panel{padding:7px 9px}
+  .result-view-tabs{margin-bottom:4px;padding:2px}.result-view-tab{min-height:25px;padding:3px 6px;font-size:8px}
   .result-data-grid{grid-template-columns:1fr;gap:3px;margin:3px 0}
   .radar-card{height:96px;overflow:hidden}
   .radar-chart{height:90px;max-height:90px}
@@ -3228,6 +3277,7 @@ a {
   .result-data-grid .result-metrics .metric-altitude{display:block}
   .result-data-grid .result-metrics>div{padding:4px 7px}
   .result-data-grid .result-metrics dd b{font-size:21px}
+  .crew-results.result-view-pane{padding:6px 8px}.crew-results ol{max-height:58px}
 }
 
 @media (orientation:landscape) and (max-height:560px) and (min-width:600px) {

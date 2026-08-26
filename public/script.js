@@ -1804,6 +1804,9 @@ import {
     renderRadar(document.querySelector("#result-radar"));
 
     const auth = state.room.sessionId ? loadRoomAuth(state.room.code) : null;
+    const resultViewTabs = document.querySelector("#result-view-tabs");
+    const flightPane = document.querySelector("#result-flight-pane");
+    const resultViewButtons = [...document.querySelectorAll("[data-result-view]")];
     const crewResults = document.querySelector("#crew-results");
     const crewResultsStatus = document.querySelector("#crew-results-status");
     const crewResultsList = document.querySelector("#crew-results-list");
@@ -1811,10 +1814,40 @@ import {
     const publishButton = document.querySelector("#result-publish-button");
     const refreshButton = document.querySelector("#result-refresh-button");
     if (
-      auth && crewResults && crewResultsStatus && crewResultsList && teamOverview &&
-      publishButton && refreshButton
+      auth && resultViewTabs && flightPane && resultViewButtons.length === 2 && crewResults &&
+      crewResultsStatus && crewResultsList && teamOverview && publishButton && refreshButton
     ) {
-      crewResults.hidden = false;
+      function activateResultView(view, moveFocus = false) {
+        const showTeam = view === "team";
+        flightPane.hidden = showTeam;
+        crewResults.hidden = !showTeam;
+        resultViewButtons.forEach((button) => {
+          const active = button.dataset.resultView === view;
+          button.classList.toggle("is-active", active);
+          button.setAttribute("aria-selected", String(active));
+          button.tabIndex = active ? 0 : -1;
+          if (active && moveFocus) button.focus();
+        });
+      }
+
+      resultViewButtons.forEach((button) => {
+        button.addEventListener("click", () => activateResultView(button.dataset.resultView));
+      });
+      resultViewTabs.addEventListener("keydown", (event) => {
+        const currentIndex = resultViewButtons.indexOf(document.activeElement);
+        if (currentIndex < 0) return;
+        let nextIndex = currentIndex;
+        if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % resultViewButtons.length;
+        else if (event.key === "ArrowLeft") {
+          nextIndex = (currentIndex - 1 + resultViewButtons.length) % resultViewButtons.length;
+        } else if (event.key === "Home") nextIndex = 0;
+        else if (event.key === "End") nextIndex = resultViewButtons.length - 1;
+        else return;
+        event.preventDefault();
+        activateResultView(resultViewButtons[nextIndex].dataset.resultView, true);
+      });
+      resultViewTabs.hidden = false;
+      activateResultView("flight");
 
       function renderSharedResults(results) {
         authoritativeResults = results;
