@@ -2,7 +2,7 @@ import { serveDir } from "@std/http/file-server";
 import { ApiError } from "./errors.ts";
 import type { GameGenre, GameRepository, SessionResults } from "./types.ts";
 import { broadcast, handleWsUpgrade } from "./ws.ts";
-import { scheduleQuestionAdvance } from "./questionLoop.ts";
+import { scheduleQuestionAdvance, triggerEarlyQuestionEnd } from "./questionLoop.ts";
 import {
   createQuizService,
   LEGACY_CHOICE_ORDER_VARIANT,
@@ -484,6 +484,14 @@ async function handleApi(
       questionIndex(answerMatch[2]),
       selectedOptionFrom(body),
     );
+    // 全員がこの問題に回答し終えていたら、制限時間を待たずに答え合わせへ進める。
+    const allAnswered = await repository.haveAllParticipantsAnswered(
+      result.gameSessionId,
+      result.questionIndex,
+    );
+    if (allAnswered) {
+      triggerEarlyQuestionEnd(result.gameSessionId, result.questionIndex);
+    }
     return json({ data: result });
   }
 
