@@ -403,10 +403,6 @@ async function handleApi(
       0,
     );
     const possibleAnswerCount = participants.length * source.session.questionCount;
-    // Exact team averages can reveal the sole private result when every other
-    // member's score is known. Require consent from the whole multi-person team.
-    const teamDetailsAvailable = participants.length <= 1 ||
-      source.participants.every((participant) => participant.resultPublished);
     const teamPower = participants.length
       ? Math.round(
         participants.reduce((sum, participant) => sum + participant.power, 0) /
@@ -443,10 +439,10 @@ async function handleApi(
         completionRate: possibleAnswerCount
           ? Math.round((answeredCount / possibleAnswerCount) * 100)
           : 0,
-        detailsAvailable: teamDetailsAvailable,
-        power: teamDetailsAvailable ? teamPower : null,
-        safety: teamDetailsAvailable ? teamSafety : null,
-        categoryScores: teamDetailsAvailable ? teamCategoryScores : {},
+        detailsAvailable: true,
+        power: teamPower,
+        safety: teamSafety,
+        categoryScores: teamCategoryScores,
       },
       participants: sharedParticipants,
     };

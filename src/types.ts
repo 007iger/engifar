@@ -112,9 +112,9 @@ export interface SessionResults {
     answeredCount: number;
     possibleAnswerCount: number;
     completionRate: number;
-    detailsAvailable: boolean;
-    power: number | null;
-    safety: number | null;
+    detailsAvailable: true;
+    power: number;
+    safety: number;
     categoryScores: Record<string, number>;
   };
   participants: SharedParticipantQuizResult[];

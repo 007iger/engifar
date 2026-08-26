@@ -470,9 +470,46 @@ Deno.test("personal and team results are derived from all stored participant ans
   assert.equal(results.team.answeredCount, 2);
   assert.equal(results.team.possibleAnswerCount, session.questionCount * 2);
   assert.equal(results.team.completionRate, 8);
-  assert.equal(results.team.detailsAvailable, false);
-  assert.equal(results.team.power, null);
-  assert.deepEqual(results.team.categoryScores, {});
+  assert.equal(results.team.detailsAvailable, true);
+  assert.equal(typeof results.team.power, "number");
+  assert.equal(typeof results.team.safety, "number");
+  assert.ok(Object.keys(results.team.categoryScores).length > 0);
+});
+
+Deno.test("the shared team result is identical for every requester", async () => {
+  const repository = new FakeRepository();
+  const firstParticipantId = repository.resultParticipants[0].participantId;
+  const secondParticipantId = "55555555-5555-4555-8555-555555555555";
+  repository.resultParticipants.push({
+    participantId: secondParticipantId,
+    displayName: "別の回答者",
+    role: "player",
+    resultPublished: false,
+    answers: [{ questionIndex: 0, selectedOption: 1, responseTimeMs: 400 }],
+  });
+  const app = createApp(repository, {
+    quizService: createQuizService({ secret: "shared-team-flight-secret-that-is-32-bytes" }),
+  });
+
+  repository.resultRequesterParticipantId = firstParticipantId;
+  const firstResponse = await app(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const firstResults = (await firstResponse.json()).data;
+
+  repository.resultRequesterParticipantId = secondParticipantId;
+  const secondResponse = await app(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const secondResults = (await secondResponse.json()).data;
+
+  assert.equal(firstResults.personal.participantId, firstParticipantId);
+  assert.equal(secondResults.personal.participantId, secondParticipantId);
+  assert.deepEqual(firstResults.team, secondResults.team);
 });
 
 Deno.test("other participants' results are private until they publish them", async () => {
@@ -504,7 +541,7 @@ Deno.test("other participants' results are private until they publish them", asy
   });
 });
 
-Deno.test("two-person team details become available after both participants publish", async () => {
+Deno.test("two-person team aggregates include every participant", async () => {
   const repository = new FakeRepository();
   repository.resultParticipants[0].resultPublished = true;
   repository.resultParticipants.push({
@@ -529,7 +566,7 @@ Deno.test("two-person team details become available after both participants publ
   assert.equal(typeof publishedResult.power, "number");
 });
 
-Deno.test("team details stay private while any member has not published", async () => {
+Deno.test("team aggregates stay available while individual results remain private", async () => {
   const repository = new FakeRepository();
   repository.resultParticipants[0].resultPublished = true;
   repository.resultParticipants.push(
@@ -554,11 +591,16 @@ Deno.test("team details stay private while any member has not published", async 
     }),
   );
   const results = (await response.json()).data;
+  const privateResult = results.participants.find((entry: { displayName: string }) =>
+    entry.displayName === "非公開ユーザー"
+  );
 
   assert.equal(results.team.participantCount, 3);
-  assert.equal(results.team.detailsAvailable, false);
-  assert.equal(results.team.power, null);
-  assert.deepEqual(results.team.categoryScores, {});
+  assert.equal(results.team.detailsAvailable, true);
+  assert.equal(typeof results.team.power, "number");
+  assert.equal(typeof results.team.safety, "number");
+  assert.ok(Object.keys(results.team.categoryScores).length > 0);
+  assert.equal(privateResult.power, undefined);
 });
 
 Deno.test("participants can publish their own completed result", async () => {

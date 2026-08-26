@@ -18,6 +18,9 @@ import {
   const STORAGE_KEY = "engifar-mission-v4";
   const ROOM_AUTH_STORAGE_KEY = "engifar-room-auth-v1";
   const HIDDEN_SOCKET_DISCONNECT_MS = 60_000;
+  // WebSocket notifications are process-local. Poll within the five-second review window so
+  // clients connected to another instance can still render the answer before the next question.
+  const ACTIVE_QUIZ_SYNC_INTERVAL_MS = 1_000;
   let quizConfig = Object.freeze({ questionCount: 24, answerTimeSeconds: 10, reviewTimeSeconds: 5 });
   let authoritativeResults = null;
   const PROFILE_ROLES = Object.freeze({
@@ -117,6 +120,7 @@ import {
     authoritativeResults = results;
     state.quiz.index = results.questionCount;
     state.metrics = metricsFromResult(results.personal);
+    state.teamMetrics = metricsFromResult(results.team);
     persist(state);
     return results;
   }
@@ -229,6 +233,7 @@ import {
         progressToken: null
       },
       metrics: null,
+      teamMetrics: null,
       outcome: null
     };
   }
@@ -261,7 +266,22 @@ import {
       };
     }
 
-    const outcome = source.outcome && metrics ? calculateOutcome(metrics) : null;
+    let teamMetrics = null;
+    if (
+      source.teamMetrics && Number.isFinite(Number(source.teamMetrics.power)) &&
+      Number.isFinite(Number(source.teamMetrics.safety))
+    ) {
+      teamMetrics = {
+        power: Math.round(clamp(safeNumber(source.teamMetrics.power), 0, 100)),
+        safety: Math.round(clamp(safeNumber(source.teamMetrics.safety), 0, 100)),
+        categoryScores: source.teamMetrics.categoryScores &&
+            typeof source.teamMetrics.categoryScores === "object"
+          ? source.teamMetrics.categoryScores
+          : {}
+      };
+    }
+
+    const outcome = source.outcome && metrics ? calculateOutcome(teamMetrics || metrics) : null;
 
     const name = String(playerSource.name || "CREW MEMBER").trim().slice(0, 18) || "CREW MEMBER";
     return {
@@ -285,6 +305,7 @@ import {
         progressToken: typeof quizSource.progressToken === "string" ? quizSource.progressToken : null
       },
       metrics,
+      teamMetrics,
       outcome
     };
   }
@@ -834,6 +855,7 @@ import {
     let currentQuestionToken = null;
     let reviewingIndex = null;
     let syncing = false;
+    let syncRequested = false;
     let rendering = false;
     let finished = false;
     let phaseToken = 0;
@@ -910,6 +932,7 @@ import {
       state.quiz.records = Array(quizConfig.questionCount).fill(null);
       state.quiz.progressToken = attempt.progressToken;
       state.metrics = null;
+      state.teamMetrics = null;
       state.outcome = null;
       persist(state);
     }
@@ -1169,43 +1192,52 @@ import {
     }
 
     async function syncSession() {
-      if (syncing || finished) return;
+      if (finished) return;
+      // Do not drop a WebSocket/timer request that arrives while a previous snapshot or question
+      // is still loading. The active runner will reconcile once more before releasing the lock.
+      syncRequested = true;
+      if (syncing) return;
       syncing = true;
       try {
-        const session = await requestApi(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-          headers: bearerHeaders(auth)
-        });
-        currentSession = session;
-        if (session.questionCount !== quizConfig.questionCount) {
-          throw new Error("ルームとクイズの問題数が一致していません。ルームを作り直してください。");
-        }
+        while (syncRequested && !finished) {
+          syncRequested = false;
+          try {
+            const session = await requestApi(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+              headers: bearerHeaders(auth)
+            });
+            currentSession = session;
+            if (session.questionCount !== quizConfig.questionCount) {
+              throw new Error("ルームとクイズの問題数が一致していません。ルームを作り直してください。");
+            }
 
-        if (session.status === "completed") {
-          await catchUpTo(session.questionCount);
-          await finishQuiz();
-          return;
-        }
-        if (session.currentQuestionIndex === null) return;
+            if (session.status === "completed") {
+              await catchUpTo(session.questionCount);
+              await finishQuiz();
+              continue;
+            }
+            if (session.currentQuestionIndex === null) continue;
 
-        await catchUpTo(session.currentQuestionIndex);
-        if (state.quiz.index === session.currentQuestionIndex) {
-          await renderQuestion(session);
-          // WSのquestion_endedを取りこぼした場合の壁時計フォールバック(reviewEndsAtは概算値)。
-          if (
-            currentRenderedIndex === session.currentQuestionIndex &&
-            reviewingIndex !== session.currentQuestionIndex &&
-            (session.questionReviewStartedAt || Date.now() >= answerEndTime(session))
-          ) {
-            const fallbackReviewEndsAt = session.reviewEndsAt
-              ? Date.parse(session.reviewEndsAt)
-              : answerEndTime(session) + quizConfig.reviewTimeSeconds * 1000;
-            await showReview(session.currentQuestionIndex, phaseToken, fallbackReviewEndsAt);
+            await catchUpTo(session.currentQuestionIndex);
+            if (state.quiz.index === session.currentQuestionIndex) {
+              await renderQuestion(session);
+              // WSのquestion_endedを取りこぼした場合の壁時計フォールバック(reviewEndsAtは概算値)。
+              if (
+                currentRenderedIndex === session.currentQuestionIndex &&
+                reviewingIndex !== session.currentQuestionIndex &&
+                (session.questionReviewStartedAt || Date.now() >= answerEndTime(session))
+              ) {
+                const fallbackReviewEndsAt = session.reviewEndsAt
+                  ? Date.parse(session.reviewEndsAt)
+                  : answerEndTime(session) + quizConfig.reviewTimeSeconds * 1000;
+                await showReview(session.currentQuestionIndex, phaseToken, fallbackReviewEndsAt);
+              }
+            }
+          } catch (error) {
+            elements.feedbackIcon.textContent = "!";
+            elements.feedbackTitle.textContent = "ルームとの同期に失敗しました";
+            elements.feedbackText.textContent = error.message;
           }
         }
-      } catch (error) {
-        elements.feedbackIcon.textContent = "!";
-        elements.feedbackTitle.textContent = "ルームとの同期に失敗しました";
-        elements.feedbackText.textContent = error.message;
       } finally {
         syncing = false;
       }
@@ -1235,10 +1267,10 @@ import {
           void syncSession();
         }
       });
-      // WebSocketを通常経路とし、取りこぼし・別インスタンス時だけ15秒ごとに復旧する。
+      // WebSocketを通常経路とし、取りこぼし・別インスタンス時は答え合わせ中にDBへ追従する。
       syncTimer = globalThis.setInterval(() => {
         if (!document.hidden) void syncSession();
-      }, 15_000);
+      }, ACTIVE_QUIZ_SYNC_INTERVAL_MS);
     }
   }
 
@@ -1295,6 +1327,7 @@ import {
         }
       } else if (!state.metrics) {
         state.metrics = computeMetrics(state.quiz.records);
+        state.teamMetrics = null;
         persist(state);
       }
       goTo("./rocket-build.html", state, true);
@@ -1325,6 +1358,7 @@ import {
         state.quiz.records = Array(quizConfig.questionCount).fill(null);
         state.quiz.progressToken = attempt.progressToken;
         state.metrics = null;
+        state.teamMetrics = null;
         state.outcome = null;
         persist(state);
       } catch (error) {
@@ -1377,6 +1411,7 @@ import {
       cancelClock();
       state.quiz.index = quizConfig.questionCount;
       state.metrics = computeMetrics(state.quiz.records);
+      state.teamMetrics = null;
       state.outcome = null;
       state.status = "rocket";
       goTo("./rocket-build.html", state, true);
@@ -1542,9 +1577,10 @@ import {
       hatch: document.querySelector("#rlHatch"), sky: document.querySelector("#rlSky"), ground: document.querySelector("#rlGroundLine"),
       approach: document.querySelector("#approachBody"), countdown: document.querySelector("#rlCountdown"), caption: document.querySelector("#flightCaption"),
       resultBg: document.querySelector("#resultBg"), resultTitle: document.querySelector("#resultTitle"), resultIllustration: document.querySelector("#resultIllustration"),
-      impactAltitude: document.querySelector("#impactAltitude"), resultDest: document.querySelector("#resultDest"), resultButton: document.querySelector("#againBtn")
+      impactAltitude: document.querySelector("#impactAltitude"), distanceLabel: document.querySelector("#rocket-distance-label"),
+      resultDest: document.querySelector("#resultDest"), resultButton: document.querySelector("#againBtn")
     };
-    const outcome = calculateOutcome(state.metrics);
+    const outcome = calculateOutcome(state.teamMetrics || state.metrics);
     const rank = getFlightRank(outcome.altitude);
     const resultContent = globalThis.ROCKET_LAUNCH_RESULTS || {};
     const botColors = ["oklch(0.62 0.20 24)", "oklch(0.62 0.17 253)", "oklch(0.83 0.16 93)", state.player.color];
@@ -1595,7 +1631,10 @@ import {
       elements.resultBg.style.background = content.backgroundGradient || "";
       elements.resultIllustration.innerHTML = content.svgMarkup || "";
       elements.impactAltitude.textContent = (outcome.altitude * 1000).toLocaleString("ja-JP");
-      elements.resultDest.textContent = `到達地点: ${rank.destination} / 到達距離 ${(outcome.altitude * 1000).toLocaleString("ja-JP")}km`;
+      const distanceLabel = state.teamMetrics ? "チーム到達距離" : "到達距離";
+      elements.distanceLabel.textContent = distanceLabel;
+      elements.distanceLabel.parentElement.setAttribute("aria-label", distanceLabel);
+      elements.resultDest.textContent = `到達地点: ${rank.destination} / ${distanceLabel} ${(outcome.altitude * 1000).toLocaleString("ja-JP")}km`;
       elements.approach.classList.remove("is-visible");
       state.outcome = outcome; state.status = "result"; persist(state); showScreen(elements.result);
     }
@@ -1677,6 +1716,19 @@ import {
     return labels.map((label) => ({ label, value: Math.round(clamp(safeNumber(categoryScores[label]), 0, 100)) }));
   }
 
+  function getTeamRadarEntries() {
+    const team = authoritativeResults?.team;
+    if (
+      !team?.categoryScores ||
+      typeof team.categoryScores !== "object" ||
+      Object.keys(team.categoryScores).length === 0
+    ) return null;
+    const entries = radarEntries(team.categoryScores);
+    return entries.every((entry) => Object.hasOwn(team.categoryScores, entry.label))
+      ? entries
+      : null;
+  }
+
   function getCrewProfile() {
     const scores = Object.entries(state.metrics && state.metrics.categoryScores ? state.metrics.categoryScores : {});
     const strongestCategory = scores.sort((a, b) => safeNumber(b[1]) - safeNumber(a[1]))[0]?.[0] || "フロントエンド";
@@ -1731,7 +1783,7 @@ import {
   function initResult() {
     if (!requireOutcome()) return;
 
-    const copy = resultCopy(state.outcome, state.metrics);
+    const copy = resultCopy(state.outcome, state.teamMetrics || state.metrics);
     const rank = getFlightRank(state.outcome.altitude);
     app.dataset.outcome = state.outcome.kind;
     document.querySelector("#result-player-avatar").style.setProperty("--crew-color", state.player.color);
@@ -1742,6 +1794,9 @@ import {
     document.querySelector("#result-message").textContent = copy.message;
     document.querySelector("#result-rank").textContent = rank.name;
     document.querySelector("#result-rank").style.setProperty("--rank-color", rank.color);
+    document.querySelector("#result-distance-label").textContent = state.teamMetrics
+      ? "チーム到達距離"
+      : "到達距離";
     animateNumber(document.querySelector("#result-power"), state.metrics.power);
     animateNumber(document.querySelector("#result-safety"), state.metrics.safety);
     animateNumber(document.querySelector("#result-altitude"), state.outcome.altitude * 1000, 1100);
@@ -1769,17 +1824,13 @@ import {
           ? "結果の公開をやめる"
           : "自分の結果をチームに公開";
         teamOverview.hidden = false;
-        document.querySelector("#team-result-power").textContent = results.team.detailsAvailable
-          ? `${results.team.power}%`
-          : "非公開";
-        document.querySelector("#team-result-safety").textContent = results.team.detailsAvailable
-          ? `${results.team.safety}%`
-          : "非公開";
+        document.querySelector("#team-result-power").textContent = `${results.team.power}%`;
+        document.querySelector("#team-result-safety").textContent = `${results.team.safety}%`;
         document.querySelector("#team-result-completion").textContent =
           `${results.team.completionRate}%`;
         const teamRadar = document.querySelector("#team-result-radar");
-        teamRadar.hidden = !results.team.detailsAvailable;
-        if (results.team.detailsAvailable) renderRadar(teamRadar, results.team.categoryScores);
+        teamRadar.hidden = false;
+        renderRadar(teamRadar, results.team.categoryScores);
 
         crewResultsList.replaceChildren();
         const visible = results.participants.filter((participant) =>
@@ -1816,9 +1867,7 @@ import {
         });
         crewResultsStatus.hidden = false;
         crewResultsStatus.textContent = results.participants.length
-          ? results.team.detailsAvailable
-            ? `${results.team.participantCount}人のチーム集計です。公開したメンバーだけ個人結果を確認できます。`
-            : "非公開メンバーの点数を逆算できないよう、全員が公開するまでチーム集計点を隠します。"
+          ? `${results.team.participantCount}人のチーム集計です。公開したメンバーだけ個人結果を確認できます。`
           : "共有結果はありません。";
       }
 
@@ -1946,7 +1995,16 @@ import {
     return size;
   }
 
-  function drawCanvasRadar(context, entries, centerX, centerY, radius, color, family) {
+  function drawCanvasRadar(
+    context,
+    entries,
+    centerX,
+    centerY,
+    radius,
+    color,
+    family,
+    teamEntries = null
+  ) {
     context.save();
     context.lineJoin = "round";
     [25, 50, 75, 100].forEach((level) => {
@@ -1981,6 +2039,22 @@ import {
     context.lineWidth = 4;
     context.fill();
     context.stroke();
+    if (teamEntries) {
+      context.save();
+      context.beginPath();
+      teamEntries.forEach((entry, index) => {
+        const [x, y] = radarPoint(index, entry.value, centerX, centerY, radius);
+        if (index === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      });
+      context.closePath();
+      context.setLineDash([6, 8]);
+      context.lineCap = "round";
+      context.strokeStyle = "#ffcf70";
+      context.lineWidth = 4;
+      context.stroke();
+      context.restore();
+    }
     entries.forEach((entry, index) => {
       const [x, y] = radarPoint(index, 125, centerX, centerY, radius);
       context.fillStyle = "#b7c7d1";
@@ -2059,7 +2133,11 @@ import {
     const metrics = [
       { label: "OUTPUT / 正答率", value: `${state.metrics.power}%`, color: "#62e4ec" },
       { label: "SAFETY / 分野バランス", value: `${state.metrics.safety}%`, color: "#c9f765" },
-      { label: "DISTANCE / 到達距離", value: `${(state.outcome.altitude * 1000).toLocaleString("ja-JP")} km`, color: "#ff9b55" }
+      {
+        label: state.teamMetrics ? "TEAM DISTANCE / チーム到達距離" : "DISTANCE / 到達距離",
+        value: `${(state.outcome.altitude * 1000).toLocaleString("ja-JP")} km`,
+        color: "#ff9b55"
+      }
     ];
 
     const metricLayout = [
@@ -2105,7 +2183,23 @@ import {
     context.fillStyle = "#8296a7";
     context.font = `900 14px ${family}`;
     context.fillText("6 FIELD RADAR", 1010, 230);
-    drawCanvasRadar(context, radarEntries(), 930, 420, 155, color, family);
+    const teamEntries = getTeamRadarEntries();
+    if (teamEntries) {
+      context.save();
+      context.beginPath();
+      context.moveTo(1010, 250);
+      context.lineTo(1050, 250);
+      context.setLineDash([6, 8]);
+      context.lineCap = "round";
+      context.strokeStyle = "#ffcf70";
+      context.lineWidth = 4;
+      context.stroke();
+      context.restore();
+      context.fillStyle = "#ffcf70";
+      context.font = `900 12px ${family}`;
+      context.fillText("TEAM AVG", 1062, 255);
+    }
+    drawCanvasRadar(context, radarEntries(), 930, 420, 155, color, family, teamEntries);
 
     context.fillStyle = "#ff7541";
     context.fillRect(0, height - 16, width, 16);
@@ -2127,6 +2221,9 @@ import {
     document.querySelector("#card-power").textContent = state.metrics.power;
     document.querySelector("#card-safety").textContent = state.metrics.safety;
     document.querySelector("#card-altitude").textContent = (state.outcome.altitude * 1000).toLocaleString("ja-JP");
+    document.querySelector("#card-distance-label").textContent = state.teamMetrics
+      ? "TEAM DISTANCE"
+      : "DISTANCE";
     document.querySelector("#card-rank").textContent = getFlightRank(state.outcome.altitude).name;
     const profile = getCrewProfile();
     document.querySelector("#card-role").textContent = profile.role;
@@ -2186,6 +2283,7 @@ import {
         await fetchAuthoritativeResults(roomAuth);
       } catch {
         state.metrics = null;
+        state.teamMetrics = null;
         state.outcome = null;
         state.status = "quiz";
         persist(state);
@@ -2193,7 +2291,7 @@ import {
         return;
       }
       if (page === "rocket" && state.status === "rocket") state.outcome = null;
-      else state.outcome = calculateOutcome(state.metrics);
+      else state.outcome = calculateOutcome(state.teamMetrics || state.metrics);
       persist(state);
       connectRoomSocket(roomAuth);
     }

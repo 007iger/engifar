@@ -88,11 +88,35 @@ Deno.test("ported PR visuals use real room data and server-backed private result
   assert.match(source, /全員共通の開始時刻を待っています/);
   assert.match(source, /answer\.allParticipantsAnswered/);
   assert.match(source, /\/quiz\/questions\/\$\{index\}\/grade/);
+  assert.match(source, /ACTIVE_QUIZ_SYNC_INTERVAL_MS = 1_000/);
+  assert.match(source, /syncRequested = true;\s+if \(syncing\) return;/);
+  assert.match(source, /while \(syncRequested && !finished\)/);
+  assert.match(source, /}, ACTIVE_QUIZ_SYNC_INTERVAL_MS\);/);
+  assert.doesNotMatch(source, /syncTimer = globalThis\.setInterval\([\s\S]{0,200}, 15_000\);/);
   assert.doesNotMatch(source, /engifar-leaderboard|RESULT_DATA|localStorage/);
   assert.match(avatarSource, /participant\.name/);
   assert.doesNotMatch(avatarSource, /クルーA|クルーB|クルーC|クルーD/);
   assert.match(resultHtml, /id="result-publish-button"/);
   assert.match(resultHtml, /id="team-result-radar"/);
+});
+
+Deno.test("profile cards overlay the complete team radar with a dotted legend", async () => {
+  const source = await Deno.readTextFile("public/script.js");
+
+  assert.match(source, /const team = authoritativeResults\?\.team/);
+  assert.match(source, /Object\.hasOwn\(team\.categoryScores, entry\.label\)/);
+  assert.match(source, /context\.setLineDash\(\[6, 8\]\)/);
+  assert.match(source, /context\.fillText\("TEAM AVG"/);
+  assert.match(source, /drawCanvasRadar\([^;]+teamEntries\);/s);
+});
+
+Deno.test("multiplayer flight results use the shared team metrics", async () => {
+  const source = await Deno.readTextFile("public/script.js");
+
+  assert.match(source, /state\.metrics = metricsFromResult\(results\.personal\)/);
+  assert.match(source, /state\.teamMetrics = metricsFromResult\(results\.team\)/);
+  assert.match(source, /calculateOutcome\(state\.teamMetrics \|\| state\.metrics\)/);
+  assert.match(source, /resultCopy\(state\.outcome, state\.teamMetrics \|\| state\.metrics\)/);
 });
 
 Deno.test("static pages include baseline browser security headers", async () => {

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#07111f">
   <title>EngiFar | フライトリザルト</title>
   <link rel="stylesheet" href="./style.css?v=20260826-pr33-ui-port">
-  <script type="module" src="./script.js?v=20260826-pr33-ui-port"></script>
+  <script type="module" src="./script.js?v=20260826-team-sync-fix"></script>
 </head>
 <body>
   <div class="app-shell" id="app" data-page="result" data-outcome="orbit">
@@ -46,7 +46,7 @@
           <dl class="result-metrics">
           <div><dt>出力強度<small>正答率</small></dt><dd><b id="result-power">0</b><span>%</span></dd></div>
           <div><dt>安全性<small>分野バランス</small></dt><dd><b id="result-safety">0</b><span>%</span></dd></div>
-          <div class="metric-altitude"><dt>到達距離</dt><dd><b id="result-altitude">0</b><span>km</span></dd></div>
+          <div class="metric-altitude"><dt id="result-distance-label">到達距離</dt><dd><b id="result-altitude">0</b><span>km</span></dd></div>
           </dl>
         </div>
 
