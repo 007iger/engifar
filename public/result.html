@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
   <title>EngiFar | フライトリザルト</title>
-  <link rel="stylesheet" href="./style.css?v=20260826-quiz-syntax">
-  <script type="module" src="./script.js?v=20260826-quiz-syntax"></script>
+  <link rel="stylesheet" href="./style.css?v=20260826-flight-score">
+  <script type="module" src="./script.js?v=20260826-flight-score"></script>
 </head>
 <body>
   <div class="app-shell" id="app" data-page="result" data-outcome="orbit">
@@ -40,7 +40,7 @@
 
         <section class="result-view-pane" id="result-flight-pane" role="tabpanel" aria-labelledby="result-flight-tab">
           <p class="eyebrow" id="result-kicker">MISSION HIGHLIGHT</p>
-          <div class="result-rank-row"><span>FLIGHT RANK</span><strong id="result-rank">大空飛行級</strong></div>
+          <div class="result-rank-row"><span>FLIGHT RANK</span><div class="result-rank-value"><strong id="result-rank">大空飛行級</strong><small id="result-rank-progress">次の等級を計算中</small></div></div>
           <h1 id="result-title">軌道到達！</h1>
           <p class="result-message" id="result-message">Webの知識が大きな推進力になりました。</p>
 
@@ -52,7 +52,7 @@
             <dl class="result-metrics">
             <div><dt>出力強度<small>正答率</small></dt><dd><b id="result-power">0</b><span>%</span></dd></div>
             <div><dt>安全性<small>分野バランス</small></dt><dd><b id="result-safety">0</b><span>%</span></dd></div>
-            <div class="metric-altitude"><dt id="result-distance-label">到達距離</dt><dd><b id="result-altitude">0</b><span>km</span></dd></div>
+            <div class="metric-altitude"><dt><span id="result-distance-label">到達距離</span><small id="result-flight-score">航行スコア 0</small></dt><dd><b id="result-altitude">0</b><span id="result-distance-unit">km</span></dd></div>
             </dl>
           </div>
         </section>

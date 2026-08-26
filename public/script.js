@@ -1,11 +1,14 @@
 import {
   calculateOutcome,
   computeMetrics,
+  FLIGHT_SCORE_MAX,
   FLIGHT_RANKS,
+  formatFlightDistance,
+  getFlightProgress,
   getFlightRank,
   OUTPUT_THRESHOLD,
   SAFETY_THRESHOLD,
-} from "./game-rules.js";
+} from "./game-rules.js?v=20260826-flight-score";
 import {
   decorateCrewAvatar,
   decorateCrewAvatars,
@@ -826,6 +829,27 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     return "BASIC";
   }
 
+  function flightScoreFor(outcome) {
+    return Math.round(clamp(safeNumber(outcome?.flightScore, outcome?.altitude), 0, FLIGHT_SCORE_MAX));
+  }
+
+  function flightMeasureLabel(rank, isTeam = false) {
+    const label = rank.measure === "altitude" ? "到達高度" : "到達距離";
+    return isTeam ? `チーム${label}` : label;
+  }
+
+  function flightDistanceText(rank) {
+    const distance = formatFlightDistance(rank.distanceKm);
+    return `${rank.approximateDistance ? "約" : ""}${distance.text}`;
+  }
+
+  function flightProgressText(outcome) {
+    const progress = getFlightProgress(flightScoreFor(outcome));
+    if (!progress.nextRank) return `${progress.rank.distanceNote} · 最高等級に到達`;
+    return `${progress.rank.distanceNote} · ${progress.nextRank.name}まであと ` +
+      `${progress.remainingScore.toLocaleString("ja-JP")} pt`;
+  }
+
   function runClock(seconds, onTick, onComplete) {
     const startedAt = performance.now();
     let requestId = 0;
@@ -1588,10 +1612,12 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       approach: document.querySelector("#approachBody"), countdown: document.querySelector("#rlCountdown"), caption: document.querySelector("#flightCaption"),
       resultBg: document.querySelector("#resultBg"), resultTitle: document.querySelector("#resultTitle"), resultIllustration: document.querySelector("#resultIllustration"),
       impactAltitude: document.querySelector("#impactAltitude"), distanceLabel: document.querySelector("#rocket-distance-label"),
+      distanceUnit: document.querySelector("#rocket-distance-unit"),
       resultDest: document.querySelector("#resultDest"), resultButton: document.querySelector("#againBtn")
     };
     const outcome = calculateOutcome(state.teamMetrics || state.metrics);
-    const rank = getFlightRank(outcome.altitude);
+    const score = flightScoreFor(outcome);
+    const rank = getFlightRank(score);
     const resultContent = globalThis.ROCKET_LAUNCH_RESULTS || {};
     const botColors = ["oklch(0.62 0.20 24)", "oklch(0.62 0.17 253)", "oklch(0.83 0.16 93)", state.player.color];
     const botSpots = [{ left: "28%", top: "78%" }, { left: "38%", top: "84%" }, { left: "60%", top: "84%" }, { left: "71%", top: "77%" }];
@@ -1640,11 +1666,17 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       elements.resultBg.className = `rl-result-bg rl-bg-${rank.key}`;
       elements.resultBg.style.background = content.backgroundGradient || "";
       elements.resultIllustration.innerHTML = content.svgMarkup || "";
-      elements.impactAltitude.textContent = (outcome.altitude * 1000).toLocaleString("ja-JP");
-      const distanceLabel = state.teamMetrics ? "チーム到達距離" : "到達距離";
+      const distance = formatFlightDistance(rank.distanceKm);
+      const distanceLabel = flightMeasureLabel(rank, Boolean(state.teamMetrics));
+      elements.impactAltitude.textContent = distance.formattedValue;
+      elements.distanceUnit.textContent = distance.unit;
       elements.distanceLabel.textContent = distanceLabel;
-      elements.distanceLabel.parentElement.setAttribute("aria-label", distanceLabel);
-      elements.resultDest.textContent = `到達地点: ${rank.destination} / ${distanceLabel} ${(outcome.altitude * 1000).toLocaleString("ja-JP")}km`;
+      elements.distanceLabel.parentElement.setAttribute(
+        "aria-label",
+        `${distanceLabel} ${flightDistanceText(rank)}`,
+      );
+      elements.resultDest.textContent = `到達地点: ${rank.destination} / ${rank.distanceNote} ` +
+        `${flightDistanceText(rank)} / 航行スコア ${score.toLocaleString("ja-JP")} pt`;
       elements.approach.classList.remove("is-visible");
       state.outcome = outcome; state.status = "result"; persist(state); showScreen(elements.result);
     }
@@ -1687,17 +1719,24 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     };
   }
 
-  function animateNumber(element, target, duration = 850) {
+  function animateNumber(element, target, duration = 850, fractionDigits = 0) {
     if (!element) return;
+    const format = (value) => value.toLocaleString("ja-JP", {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    });
     if (reducedMotion) {
-      element.textContent = target.toLocaleString("ja-JP");
+      element.textContent = format(target);
       return;
     }
     const startedAt = performance.now();
     function frame(now) {
       const progress = clamp((now - startedAt) / duration, 0, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
-      element.textContent = Math.round(target * eased).toLocaleString("ja-JP");
+      const value = fractionDigits
+        ? Number((target * eased).toFixed(fractionDigits))
+        : Math.round(target * eased);
+      element.textContent = format(value);
       if (progress < 1) globalThis.requestAnimationFrame(frame);
     }
     globalThis.requestAnimationFrame(frame);
@@ -1794,7 +1833,9 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     if (!requireOutcome()) return;
 
     const copy = resultCopy(state.outcome, state.teamMetrics || state.metrics);
-    const rank = getFlightRank(state.outcome.altitude);
+    const score = flightScoreFor(state.outcome);
+    const rank = getFlightRank(score);
+    const distance = formatFlightDistance(rank.distanceKm);
     app.dataset.outcome = state.outcome.kind;
     document.querySelector("#result-player-avatar").style.setProperty("--crew-color", state.player.color);
     document.querySelector("#button-crew").style.setProperty("--crew-color", state.player.color);
@@ -1804,12 +1845,20 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     document.querySelector("#result-message").textContent = copy.message;
     document.querySelector("#result-rank").textContent = rank.name;
     document.querySelector("#result-rank").style.setProperty("--rank-color", rank.color);
-    document.querySelector("#result-distance-label").textContent = state.teamMetrics
-      ? "チーム到達距離"
-      : "到達距離";
+    document.querySelector("#result-rank-progress").textContent = flightProgressText(state.outcome);
+    document.querySelector("#result-distance-label").textContent =
+      flightMeasureLabel(rank, Boolean(state.teamMetrics));
+    document.querySelector("#result-flight-score").textContent =
+      `航行スコア ${score.toLocaleString("ja-JP")} / ${FLIGHT_SCORE_MAX.toLocaleString("ja-JP")}`;
+    document.querySelector("#result-distance-unit").textContent = distance.unit;
     animateNumber(document.querySelector("#result-power"), state.metrics.power);
     animateNumber(document.querySelector("#result-safety"), state.metrics.safety);
-    animateNumber(document.querySelector("#result-altitude"), state.outcome.altitude * 1000, 1100);
+    animateNumber(
+      document.querySelector("#result-altitude"),
+      distance.value,
+      1100,
+      distance.fractionDigits,
+    );
     addResultSparkles(document.querySelector("#result-sparkles"));
     renderRadar(document.querySelector("#result-radar"));
 
@@ -2173,12 +2222,17 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     context.font = `900 ${nameSize}px ${family}`;
     context.fillText(state.player.name, 450, 267);
 
+    const score = flightScoreFor(state.outcome);
+    const rank = getFlightRank(score);
+    const distance = formatFlightDistance(rank.distanceKm);
     const metrics = [
       { label: "OUTPUT / 正答率", value: `${state.metrics.power}%`, color: "#62e4ec" },
       { label: "SAFETY / 分野バランス", value: `${state.metrics.safety}%`, color: "#c9f765" },
       {
-        label: state.teamMetrics ? "TEAM DISTANCE / チーム到達距離" : "DISTANCE / 到達距離",
-        value: `${(state.outcome.altitude * 1000).toLocaleString("ja-JP")} km`,
+        label: state.teamMetrics
+          ? `TEAM ${rank.measure === "altitude" ? "ALTITUDE" : "DISTANCE"} / ${flightMeasureLabel(rank, true)}`
+          : `${rank.measure === "altitude" ? "ALTITUDE" : "DISTANCE"} / ${flightMeasureLabel(rank)}`,
+        value: `${rank.approximateDistance ? "≈ " : ""}${distance.text}`,
         color: "#ff9b55"
       }
     ];
@@ -2205,7 +2259,6 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       context.fillText(metric.value, x + 20, y + 78);
     });
 
-    const rank = getFlightRank(state.outcome.altitude);
     const profile = getCrewProfile();
     context.textAlign = "left";
     context.fillStyle = "#8296a7";
@@ -2263,11 +2316,15 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     document.querySelector("#card-player-name").textContent = state.player.name;
     document.querySelector("#card-power").textContent = state.metrics.power;
     document.querySelector("#card-safety").textContent = state.metrics.safety;
-    document.querySelector("#card-altitude").textContent = (state.outcome.altitude * 1000).toLocaleString("ja-JP");
+    const score = flightScoreFor(state.outcome);
+    const rank = getFlightRank(score);
+    const distance = formatFlightDistance(rank.distanceKm);
+    document.querySelector("#card-altitude").textContent = distance.formattedValue;
+    document.querySelector("#card-distance-unit").textContent = distance.unit;
     document.querySelector("#card-distance-label").textContent = state.teamMetrics
-      ? "TEAM DISTANCE"
-      : "DISTANCE";
-    document.querySelector("#card-rank").textContent = getFlightRank(state.outcome.altitude).name;
+      ? `TEAM ${rank.measure === "altitude" ? "ALTITUDE" : "DISTANCE"}`
+      : (rank.measure === "altitude" ? "ALTITUDE" : "DISTANCE");
+    document.querySelector("#card-rank").textContent = rank.name;
     const profile = getCrewProfile();
     document.querySelector("#card-role").textContent = profile.role;
     document.querySelector("#card-comment").textContent = profile.copy;
@@ -2311,6 +2368,8 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     thresholds: Object.freeze({ output: OUTPUT_THRESHOLD, safety: SAFETY_THRESHOLD }),
     calculateOutcome,
     computeMetrics,
+    formatFlightDistance,
+    getFlightProgress,
     getFlightRank,
     ranks: FLIGHT_RANKS
   });

@@ -139,11 +139,11 @@ Deno.test("result views are split and code questions preserve readable indentati
 
   for (const page of ["index", "room", "quiz", "rocket", "result", "card"]) {
     const html = await Deno.readTextFile(`public/${page}.html`);
-    assert.match(html, /script\.js\?v=20260826-quiz-syntax/);
+    assert.match(html, /script\.js\?v=20260826-flight-score/);
   }
   for (const page of ["index", "room", "quiz", "result", "card"]) {
     const html = await Deno.readTextFile(`public/${page}.html`);
-    assert.match(html, /style\.css\?v=20260826-quiz-syntax/);
+    assert.match(html, /style\.css\?v=20260826-flight-score/);
   }
 });
 
@@ -154,7 +154,7 @@ Deno.test("quiz crew reacts to waiting and answer results without taking layout 
   const quizHtml = await Deno.readTextFile("public/quiz.html");
 
   assert.match(quizHtml, /id="quiz-crew-reaction"/);
-  assert.match(quizHtml, /quiz-crew-reaction\.css\?v=20260826-quiz-syntax/);
+  assert.match(quizHtml, /quiz-crew-reaction\.css\?v=20260826-flight-score/);
   assert.match(source, /createQuizCrewReaction/);
   assert.match(source, /crewReaction\.setState\("waiting"\)/);
   assert.match(source, /crewReaction\.setState\(result\.correct \? "correct" : "incorrect"\)/);
@@ -179,6 +179,25 @@ Deno.test("quiz code highlights syntax and strongly marks the blank", async () =
     style,
     /\.quiz-syntax-token--blank\s*\{[\s\S]*?border-bottom: 2px solid var\(--lime\);[\s\S]*?box-shadow:/,
   );
+});
+
+Deno.test("flight score and astronomical distance are displayed as separate values", async () => {
+  const rules = await Deno.readTextFile("public/game-rules.js");
+  const source = await Deno.readTextFile("public/script.js");
+  const resultHtml = await Deno.readTextFile("public/result.html");
+
+  assert.match(rules, /POWER_SCORE_WEIGHT = 0\.65/);
+  assert.match(rules, /SAFETY_SCORE_WEIGHT = 0\.35/);
+  assert.match(rules, /distanceKm: 384_400/);
+  assert.match(rules, /distanceKm: 54_600_000/);
+  assert.match(rules, /distanceKm: 2_500_000_000/);
+  assert.match(rules, /distanceKm: 4_300_000_000/);
+  assert.match(source, /formatFlightDistance\(rank\.distanceKm\)/);
+  assert.match(source, /flightProgressText\(state\.outcome\)/);
+  assert.doesNotMatch(source, /outcome\.altitude \* 1000/);
+  assert.match(resultHtml, /id="result-flight-score"/);
+  assert.match(resultHtml, /id="result-rank-progress"/);
+  assert.match(resultHtml, /id="result-distance-unit"/);
 });
 
 Deno.test("static pages include baseline browser security headers", async () => {

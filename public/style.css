@@ -3252,6 +3252,8 @@ a {
 .result-avatar .crew-avatar { --crew-size: 50px; }
 .result-rank-row span { color:var(--quiet); font-size:8px; font-weight:900; letter-spacing:.13em; }
 .result-rank-row strong { color:var(--rank-color,var(--lime)); font-size:clamp(15px,2vw,22px); }
+.result-rank-value { display:grid; min-width:0; justify-items:end; gap:1px; text-align:right; }
+.result-rank-value small { max-width:min(58vw,360px); overflow:hidden; color:var(--muted); font-size:7px; font-weight:800; line-height:1.35; text-overflow:ellipsis; white-space:nowrap; }
 .result-data-grid { display:grid; grid-template-columns:minmax(210px,1fr) minmax(175px,.82fr); align-items:center; gap:8px; margin:10px 0; }
 .radar-card { min-width:0; margin:0; padding:4px; border:1px solid var(--line); border-radius:15px; background:rgba(4,13,25,.58); }
 .radar-chart { display:block; width:100%; height:auto; max-height:230px; }
@@ -3291,6 +3293,7 @@ a {
 .card-mini-metrics .card-distance-metric { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .card-distance-metric dt { flex:0 0 auto; }
 .card-distance-metric dd { min-width:0; text-align:right; }
+.card-distance-metric dd span { color:var(--muted); font-size:.68em; font-weight:800; }
 .card-rank-metric dd { color:var(--lime); font-size:15px; font-weight:900; }
 #card-altitude { font-size:clamp(12px,1.5vw,18px); letter-spacing:-.04em; }
 
