@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createApp } from "../src/app.ts";
 import { ApiError } from "../src/errors.ts";
-import { createQuizService } from "../src/quiz.ts";
+import { createQuizService, questionSetVersionForChoiceOrder } from "../src/quiz.ts";
 import type {
   AnswerSummary,
   AuthenticatedParticipant,
@@ -406,6 +406,7 @@ Deno.test("participants can retrieve ranked shared results", async () => {
     session.questionCount,
     selectedOptions,
     SESSION_ID,
+    questionSetVersionForChoiceOrder(session.choiceOrderVersion),
   );
 
   assert.equal(response.status, 200);

@@ -6,6 +6,7 @@ import { scheduleQuestionAdvance, triggerEarlyQuestionEnd } from "./questionLoop
 import {
   createQuizService,
   LEGACY_CHOICE_ORDER_VARIANT,
+  questionSetVersionForChoiceOrder,
   type QuizService,
   safetyFromCategoryScores,
 } from "./quiz.ts";
@@ -358,6 +359,7 @@ async function handleApi(
         source.session.questionCount,
         selectedOptions,
         choiceOrderVariant(source.session),
+        questionSetVersionForChoiceOrder(source.session.choiceOrderVersion),
       );
       const responseTimes = participant.answers.map((answer) => answer.responseTimeMs);
       return {
@@ -512,6 +514,7 @@ async function handleApi(
         revealAt,
         choiceOrderVariant(session),
         session.answerTimeSeconds,
+        questionSetVersionForChoiceOrder(session.choiceOrderVersion),
       ),
     });
   }

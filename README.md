@@ -93,11 +93,15 @@ JSONレスポンスは成功時に `{ "data": ... }`、失敗時に
 HMAC署名された問題トークンを使って、回答時間が終了した後にだけ採点結果と解説を返します。
 トークンは問題順も検証するため、後続問題へ直接スキップできません。
 
+問題セットはセッションの`choice_order_version`と一緒に固定します。v1/v2の既存セッションは
+`data/quiz_questions.v1.json`、v3以降の新規セッションは`data/quiz_questions.json`を使うため、
+問題差し替え後も保存済み回答の採点結果は変わりません。
+
 ```json
 {
-  "id": "frontend-html-heading",
+  "id": "frontend-flex-space-between",
   "answerTimeSeconds": 10,
-  "question": "<＿＿＿>EngiFar</＿＿＿>"
+  "question": ".cards {\n  display: ＿＿＿;\n  justify-content: space-between;\n}"
 }
 ```
 
