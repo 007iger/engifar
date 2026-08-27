@@ -76,39 +76,127 @@ function slotsFor(count) {
   return slots;
 }
 
+const REACTION_CLASSES = ["is-reacting-shy", "is-reacting-spin"];
+const OVERLAP_MIN_DIST = 58;
+const OVERLAP_KICK = 1.15;
+
+function resolveOverlap(avatar, field) {
+  const others = Array.from(field.querySelectorAll(".room-field-avatar")).filter((el) => el !== avatar);
+  if (!others.length) return false;
+  const bounds = field.getBoundingClientRect();
+  const width = Math.max(1, bounds.width);
+  const height = Math.max(1, bounds.height);
+  const cx = (parseFloat(avatar.style.left) / 100) * width;
+  const cy = (parseFloat(avatar.style.top) / 100) * height;
+  let pushX = 0;
+  let pushY = 0;
+  let overlapped = false;
+
+  others.forEach((other) => {
+    const ox = (parseFloat(other.style.left) / 100) * width;
+    const oy = (parseFloat(other.style.top) / 100) * height;
+    let dx = cx - ox;
+    let dy = cy - oy;
+    let dist = Math.hypot(dx, dy);
+    if (dist >= OVERLAP_MIN_DIST) return;
+    overlapped = true;
+    if (dist < 1) {
+      const angle = Math.random() * Math.PI * 2;
+      dx = Math.cos(angle);
+      dy = Math.sin(angle);
+      dist = 1;
+    }
+    const overlap = OVERLAP_MIN_DIST - dist;
+    pushX += (dx / dist) * overlap;
+    pushY += (dy / dist) * overlap;
+  });
+
+  if (!overlapped) return false;
+
+  const nx = Math.min(width * 0.94, Math.max(width * 0.06, cx + pushX * OVERLAP_KICK));
+  const ny = Math.min(height * 0.92, Math.max(height * 0.08, cy + pushY * OVERLAP_KICK));
+  avatar.style.left = `${(nx / width) * 100}%`;
+  avatar.style.top = `${(ny / height) * 100}%`;
+  return true;
+}
+
+function playTransientClass(avatar, className, onDone) {
+  avatar.dataset.busy = "true";
+  avatar.classList.remove(...REACTION_CLASSES, "is-bounce");
+  void avatar.offsetWidth;
+  avatar.classList.add(className);
+  const onEnd = (event) => {
+    if (event.target !== avatar) return;
+    avatar.classList.remove(className);
+    avatar.dataset.busy = "false";
+    avatar.removeEventListener("animationend", onEnd);
+    if (onDone) onDone();
+  };
+  avatar.addEventListener("animationend", onEnd);
+}
+
 function enableAvatarInteraction(avatar, field) {
   let pointerId = null;
   let dragged = false;
+  let startX = 0;
+  let startY = 0;
+  const DRAG_THRESHOLD = 4;
 
   avatar.addEventListener("pointerdown", (event) => {
+    if (avatar.dataset.busy === "true") return;
     pointerId = event.pointerId;
     dragged = false;
+    startX = event.clientX;
+    startY = event.clientY;
     avatar.setPointerCapture(pointerId);
     avatar.classList.add("is-dragging");
   });
   avatar.addEventListener("pointermove", (event) => {
     if (pointerId !== event.pointerId) return;
+    if (!dragged && Math.hypot(event.clientX - startX, event.clientY - startY) > DRAG_THRESHOLD) {
+      dragged = true;
+    }
     const bounds = field.getBoundingClientRect();
     const left = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * 100;
     const top = ((event.clientY - bounds.top) / Math.max(1, bounds.height)) * 100;
     avatar.style.left = `${Math.min(94, Math.max(6, left))}%`;
     avatar.style.top = `${Math.min(92, Math.max(8, top))}%`;
-    dragged = true;
   });
   const finish = (event) => {
     if (pointerId !== event.pointerId) return;
     if (avatar.hasPointerCapture(pointerId)) avatar.releasePointerCapture(pointerId);
     pointerId = null;
     avatar.classList.remove("is-dragging");
-    if (!dragged) {
-      avatar.classList.remove("is-reacting");
-      void avatar.offsetWidth;
-      avatar.classList.add("is-reacting");
-      globalThis.setTimeout(() => avatar.classList.remove("is-reacting"), 600);
+    const wasDragged = dragged;
+    dragged = false;
+
+    if (wasDragged) {
+      if (resolveOverlap(avatar, field)) playTransientClass(avatar, "is-bounce");
+      return;
     }
+    if (event.type !== "pointerup") return;
+    const reactionClass = REACTION_CLASSES[Math.floor(Math.random() * REACTION_CLASSES.length)];
+    playTransientClass(avatar, reactionClass);
   };
   avatar.addEventListener("pointerup", finish);
   avatar.addEventListener("pointercancel", finish);
+}
+
+function addPlayfulDetails(avatar) {
+  const sweat = document.createElement("span");
+  sweat.className = "room-field-avatar-sweat";
+  sweat.setAttribute("aria-hidden", "true");
+
+  const limbs = document.createElement("span");
+  limbs.className = "room-field-avatar-limbs";
+  limbs.setAttribute("aria-hidden", "true");
+  ["arm-left", "arm-right", "leg-left", "leg-right"].forEach((part) => {
+    const limb = document.createElement("i");
+    limb.className = `room-field-avatar-limb room-field-avatar-limb--${part}`;
+    limbs.append(limb);
+  });
+
+  avatar.append(sweat, limbs);
 }
 
 export function renderRoomAvatarField(field, participants) {
@@ -125,6 +213,7 @@ export function renderRoomAvatarField(field, participants) {
     avatar.title = `${participant.name}（ドラッグで移動）`;
     avatar.setAttribute("aria-label", `${participant.name}。タップするとリアクションします`);
     decorateCrewAvatar(avatar);
+    addPlayfulDetails(avatar);
     if (participant.isYou) {
       avatar.classList.add("is-you");
       const label = document.createElement("b");

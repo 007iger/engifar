@@ -394,8 +394,18 @@ a {
   animation: none;
 }
 
-.room-field-avatar.is-reacting {
-  animation: room-avatar-reaction .58s ease;
+.room-field-avatar.is-reacting-shy {
+  animation: room-avatar-shy .58s ease;
+}
+
+.room-field-avatar.is-reacting-spin {
+  animation: room-avatar-spin .62s cubic-bezier(.3,.15,.2,1);
+}
+
+.room-field-avatar.is-bounce {
+  z-index: 7;
+  transition: left .32s cubic-bezier(.34,1.56,.64,1), top .32s cubic-bezier(.34,1.56,.64,1), filter .18s ease, scale .18s ease;
+  animation: room-avatar-bounce .32s cubic-bezier(.34,1.56,.64,1);
 }
 
 .room-field-avatar-label {
@@ -411,15 +421,101 @@ a {
   translate: -50% 0;
 }
 
-@keyframes room-avatar-reaction {
+.room-field-avatar-sweat {
+  position: absolute;
+  top: 8%;
+  right: -2px;
+  width: 7px;
+  height: 10px;
+  border-radius: 60% 60% 60% 2px;
+  background: linear-gradient(#d8f5ff, #4fb6e0);
+  opacity: 0;
+  pointer-events: none;
+  transform: rotate(40deg) scale(.6);
+}
+
+.room-field-avatar.is-dragging .room-field-avatar-sweat {
+  animation: room-avatar-sweat-drip .5s ease-in-out infinite;
+}
+
+.room-field-avatar-limbs {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.room-field-avatar-limb {
+  position: absolute;
+  width: 4px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--crew-color, #54d37c);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.18);
+  opacity: 0;
+  transform-origin: top center;
+}
+
+.room-field-avatar-limb--arm-left { left: -3px; top: 32%; rotate: -20deg; }
+.room-field-avatar-limb--arm-right { right: -3px; top: 32%; rotate: 20deg; }
+.room-field-avatar-limb--leg-left { left: 30%; bottom: -11px; rotate: -15deg; }
+.room-field-avatar-limb--leg-right { right: 30%; bottom: -11px; rotate: 15deg; }
+
+.room-field-avatar.is-dragging .room-field-avatar-limb {
+  opacity: 1;
+}
+.room-field-avatar.is-dragging .room-field-avatar-limb--arm-left {
+  animation: room-avatar-flail-arm-left .22s ease-in-out infinite;
+}
+.room-field-avatar.is-dragging .room-field-avatar-limb--arm-right {
+  animation: room-avatar-flail-arm-right .24s ease-in-out infinite;
+  animation-delay: -.08s;
+}
+.room-field-avatar.is-dragging .room-field-avatar-limb--leg-left {
+  animation: room-avatar-flail-leg-left .2s ease-in-out infinite;
+  animation-delay: -.05s;
+}
+.room-field-avatar.is-dragging .room-field-avatar-limb--leg-right {
+  animation: room-avatar-flail-leg-right .21s ease-in-out infinite;
+  animation-delay: -.12s;
+}
+
+@keyframes room-avatar-shy {
   0%, 100% { rotate: 0deg; scale: 1; }
   30% { rotate: -12deg; scale: 1.08; }
   65% { rotate: 12deg; scale: 1.08; }
 }
 
+@keyframes room-avatar-spin {
+  0% { rotate: 0deg; scale: 1; }
+  60% { rotate: 360deg; scale: 1.15; }
+  100% { rotate: 360deg; scale: 1; }
+}
+
+@keyframes room-avatar-bounce {
+  0% { scale: 1; }
+  35% { scale: 1.18 .84; }
+  65% { scale: .9 1.1; }
+  100% { scale: 1; }
+}
+
+@keyframes room-avatar-sweat-drip {
+  0% { translate: 0 -2px; opacity: 0; }
+  35% { opacity: 1; }
+  100% { translate: 0 7px; opacity: 0; }
+}
+
+@keyframes room-avatar-flail-arm-left { 0%, 100% { rotate: -38deg; } 50% { rotate: 12deg; } }
+@keyframes room-avatar-flail-arm-right { 0%, 100% { rotate: 38deg; } 50% { rotate: -12deg; } }
+@keyframes room-avatar-flail-leg-left { 0%, 100% { rotate: -22deg; } 50% { rotate: 18deg; } }
+@keyframes room-avatar-flail-leg-right { 0%, 100% { rotate: 22deg; } 50% { rotate: -18deg; } }
+
 @media (prefers-reduced-motion: reduce) {
   .crew-avatar,
-  .room-field-avatar.is-reacting {
+  .room-field-avatar.is-reacting-shy,
+  .room-field-avatar.is-reacting-spin,
+  .room-field-avatar.is-bounce,
+  .room-field-avatar.is-dragging .room-field-avatar-sweat,
+  .room-field-avatar.is-dragging .room-field-avatar-limb {
     animation: none;
   }
 }
