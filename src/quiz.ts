@@ -299,7 +299,9 @@ export class QuizService {
     );
     this.#now = options.now ?? Date.now;
     const questionCount = options.questionCount ?? QUESTIONS_PER_ATTEMPT;
-    if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > QUESTIONS_PER_ATTEMPT) {
+    if (
+      !Number.isInteger(questionCount) || questionCount < 1 || questionCount > QUESTIONS_PER_ATTEMPT
+    ) {
       throw new Error(`questionCount must be an integer between 1 and ${QUESTIONS_PER_ATTEMPT}`);
     }
     const answerTimeSecondsByQuestion = Object.freeze(Array.from(
