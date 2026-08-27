@@ -25,7 +25,10 @@ export async function startServer(): Promise<Deno.HttpServer> {
     startBroadcastChannel();
     startHeartbeatMonitor(repository);
     startRoomCleanupMonitor(repository);
-    return Deno.serve(createApp(repository, { quizService }));
+    // RenderのようなPaaSは、リッスンすべきポート番号をPORT環境変数で渡してくる。
+    // 未設定時のデフォルト8000はローカル/Deno Deploy向け。
+    const port = Number(Deno.env.get("PORT") ?? 8000);
+    return Deno.serve({ port }, createApp(repository, { quizService }));
   } catch (error) {
     await pool.end();
     throw error;
