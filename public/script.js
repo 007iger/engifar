@@ -1,18 +1,30 @@
 import {
   calculateOutcome,
   computeMetrics,
+  FLIGHT_SCORE_MAX,
   FLIGHT_RANKS,
+  formatFlightDistance,
+  getFlightProgress,
   getFlightRank,
   OUTPUT_THRESHOLD,
   SAFETY_THRESHOLD,
-} from "./game-rules.js";
+} from "./game-rules.js?v=20260826-flight-score";
+import {
+  decorateCrewAvatar,
+  decorateCrewAvatars,
+  renderRoomAvatarField,
+} from "./crew-avatars.js";
+import { createQuizCrewReaction } from "./quiz-crew-reaction.js";
+import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
 
 (() => {
   "use strict";
 
   const STORAGE_KEY = "engifar-mission-v4";
   const ROOM_AUTH_STORAGE_KEY = "engifar-room-auth-v1";
-  let quizConfig = Object.freeze({ questionCount: 24, answerTimeSeconds: 10, reviewTimeSeconds: 5 });
+  const HIDDEN_SOCKET_DISCONNECT_MS = 60_000;
+  const RECOVERY_SYNC_INTERVAL_MS = 60_000;
+  let quizConfig = Object.freeze({ questionCount: 24, answerTimeSeconds: 15, reviewTimeSeconds: 5 });
   let authoritativeResults = null;
   const PROFILE_ROLES = Object.freeze({
     "フロントエンド": { role: "INTERFACE CREATOR", copy: "画面の構造・見た目・動きを心地よく組み立てるクルー" },
@@ -28,6 +40,7 @@ import {
 
   const page = app.dataset.page || "home";
   const reducedMotion = globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  decorateCrewAvatars(app);
 
   if (page === "quiz") {
     globalThis.addEventListener("pageshow", (event) => {
@@ -110,6 +123,7 @@ import {
     authoritativeResults = results;
     state.quiz.index = results.questionCount;
     state.metrics = metricsFromResult(results.personal);
+    state.teamMetrics = metricsFromResult(results.team);
     persist(state);
     return results;
   }
@@ -118,18 +132,23 @@ import {
     let socket = null;
     let heartbeatTimer = null;
     let reconnectTimer = null;
+    let hiddenTimer = null;
     let stopped = false;
+    let disconnectedWhileHidden = false;
     let retryCount = 0;
+    let hasConnected = false;
 
     function clearTimers() {
       if (heartbeatTimer !== null) globalThis.clearInterval(heartbeatTimer);
       if (reconnectTimer !== null) globalThis.clearTimeout(reconnectTimer);
+      if (hiddenTimer !== null) globalThis.clearTimeout(hiddenTimer);
       heartbeatTimer = null;
       reconnectTimer = null;
+      hiddenTimer = null;
     }
 
     function open() {
-      if (stopped) return;
+      if (stopped || disconnectedWhileHidden) return;
       const url = new URL("/ws", globalThis.location.href);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       url.searchParams.set("roomCode", auth.roomCode);
@@ -137,8 +156,10 @@ import {
       onStatus("connecting");
 
       socket.addEventListener("open", () => {
+        const reconnected = hasConnected || retryCount > 0;
+        hasConnected = true;
         retryCount = 0;
-        onStatus("connected");
+        onStatus("connected", { reconnected });
         heartbeatTimer = globalThis.setInterval(() => {
           if (socket && socket.readyState === WebSocket.OPEN) socket.send("heartbeat");
         }, 5_000);
@@ -154,7 +175,7 @@ import {
         if (heartbeatTimer !== null) globalThis.clearInterval(heartbeatTimer);
         heartbeatTimer = null;
         socket = null;
-        if (stopped) return;
+        if (stopped || disconnectedWhileHidden) return;
         onStatus("reconnecting");
         retryCount += 1;
         const delay = Math.min(5_000, 500 * 2 ** Math.min(retryCount - 1, 4));
@@ -167,10 +188,36 @@ import {
       if (stopped) return;
       stopped = true;
       clearTimers();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       socket?.close();
     }
 
+    function handleVisibilityChange() {
+      if (!document.hidden) {
+        if (hiddenTimer !== null) globalThis.clearTimeout(hiddenTimer);
+        hiddenTimer = null;
+        if (disconnectedWhileHidden) {
+          globalThis.location.replace("./index.html");
+        }
+        return;
+      }
+      if (hiddenTimer !== null || disconnectedWhileHidden || stopped) return;
+      hiddenTimer = globalThis.setTimeout(() => {
+        hiddenTimer = null;
+        if (!document.hidden || stopped) return;
+        disconnectedWhileHidden = true;
+        if (heartbeatTimer !== null) globalThis.clearInterval(heartbeatTimer);
+        if (reconnectTimer !== null) globalThis.clearTimeout(reconnectTimer);
+        heartbeatTimer = null;
+        reconnectTimer = null;
+        onStatus("disconnected");
+        socket?.close(1000, "hidden-timeout");
+      }, HIDDEN_SOCKET_DISCONNECT_MS);
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     globalThis.addEventListener("pagehide", stop, { once: true });
+    handleVisibilityChange();
     open();
     return { stop };
   }
@@ -192,6 +239,7 @@ import {
         progressToken: null
       },
       metrics: null,
+      teamMetrics: null,
       outcome: null
     };
   }
@@ -224,7 +272,22 @@ import {
       };
     }
 
-    const outcome = source.outcome && metrics ? calculateOutcome(metrics) : null;
+    let teamMetrics = null;
+    if (
+      source.teamMetrics && Number.isFinite(Number(source.teamMetrics.power)) &&
+      Number.isFinite(Number(source.teamMetrics.safety))
+    ) {
+      teamMetrics = {
+        power: Math.round(clamp(safeNumber(source.teamMetrics.power), 0, 100)),
+        safety: Math.round(clamp(safeNumber(source.teamMetrics.safety), 0, 100)),
+        categoryScores: source.teamMetrics.categoryScores &&
+            typeof source.teamMetrics.categoryScores === "object"
+          ? source.teamMetrics.categoryScores
+          : {}
+      };
+    }
+
+    const outcome = source.outcome && metrics ? calculateOutcome(teamMetrics || metrics) : null;
 
     const name = String(playerSource.name || "CREW MEMBER").trim().slice(0, 18) || "CREW MEMBER";
     return {
@@ -248,6 +311,7 @@ import {
         progressToken: typeof quizSource.progressToken === "string" ? quizSource.progressToken : null
       },
       metrics,
+      teamMetrics,
       outcome
     };
   }
@@ -524,18 +588,17 @@ import {
       goTo("./index.html", state, true);
       return;
     }
-    const playerAvatar = document.querySelector("#room-player-avatar");
+    const avatarField = document.querySelector("#room-avatar-field");
     const playerList = document.querySelector("#room-player-list");
     const roomCodeValue = document.querySelector("#room-code-value");
     const startButton = document.querySelector("#room-start-button");
     const lobbyMessage = document.querySelector("#room-lobby-message");
     const lobbyStatus = document.querySelector("#room-lobby-status");
     if (
-      !playerAvatar || !playerList || !roomCodeValue || !startButton || !lobbyMessage ||
+      !avatarField || !playerList || !roomCodeValue || !startButton || !lobbyMessage ||
       !lobbyStatus
     ) return;
 
-    playerAvatar.style.setProperty("--crew-color", state.player.color);
     roomCodeValue.textContent = state.room.code;
     setStateLink(document.querySelector("#room-home-link"), "./index.html", state);
 
@@ -550,6 +613,8 @@ import {
     const crewColors = ["#54d37c", "#5ca9ff", "#f5cf4b", "#ff665f", "#b889ff", "#62e4ec"];
     let enteredQuiz = false;
     let refreshing = false;
+    let avatarSignature = "";
+    let participants = [];
 
     function colorFor(participant, index) {
       if (participant.id === auth.participantId) return state.player.color;
@@ -558,9 +623,9 @@ import {
       return crewColors[(hash + index) % crewColors.length];
     }
 
-    function renderParticipants(participants) {
+    function renderParticipants(participantList) {
       playerList.replaceChildren();
-      participants.forEach((participant, index) => {
+      participantList.forEach((participant, index) => {
         const card = document.createElement("div");
         card.className = "room-player-card";
         if (participant.id === auth.participantId) card.classList.add("is-you");
@@ -570,6 +635,7 @@ import {
         avatar.style.setProperty("--crew-color", colorFor(participant, index));
         avatar.setAttribute("aria-hidden", "true");
         avatar.append(document.createElement("i"));
+        decorateCrewAvatar(avatar);
 
         const copy = document.createElement("div");
         const role = document.createElement("small");
@@ -584,7 +650,18 @@ import {
         card.append(avatar, copy, badge);
         playerList.append(card);
       });
-      lobbyMessage.textContent = `${participants.length}人のクルーが参加中です。招待コードを仲間に伝えましょう。`;
+      const fieldParticipants = participantList.map((participant, index) => ({
+        id: participant.id,
+        name: participant.displayName,
+        color: colorFor(participant, index),
+        isYou: participant.id === auth.participantId,
+      }));
+      const nextAvatarSignature = JSON.stringify(fieldParticipants);
+      if (nextAvatarSignature !== avatarSignature) {
+        avatarSignature = nextAvatarSignature;
+        renderRoomAvatarField(avatarField, fieldParticipants);
+      }
+      lobbyMessage.textContent = `${participantList.length}人のクルーが参加中です。招待コードを仲間に伝えましょう。`;
     }
 
     function enterQuiz(session) {
@@ -595,7 +672,7 @@ import {
       next.player = { ...state.player };
       next.room = { ...state.room, sessionId: session.id };
       next.status = "quiz";
-      goTo("./quiz.html", next);
+      goTo("./quiz-ready.html", next);
     }
 
     async function refreshRoom() {
@@ -606,7 +683,8 @@ import {
           `/api/rooms/${encodeURIComponent(state.room.code)}`,
           { headers: bearerHeaders(auth) }
         );
-        renderParticipants(room.participants);
+        participants = room.participants;
+        renderParticipants(participants);
         lobbyStatus.textContent = "サーバーに接続済み";
         lobbyStatus.dataset.kind = "connected";
         if (room.status === "playing" && room.activeSession) enterQuiz(room.activeSession);
@@ -649,26 +727,45 @@ import {
     connectRoomSocket(
       auth,
       (event) => {
-        if (event.type === "player_joined" || event.type === "player_left") {
-          void refreshRoom();
+        if (event.type === "player_joined") {
+          const participant = {
+            id: event.participantId,
+            displayName: event.displayName,
+            role: event.role
+          };
+          const existingIndex = participants.findIndex((item) => item.id === participant.id);
+          if (existingIndex >= 0) participants[existingIndex] = participant;
+          else participants.push(participant);
+          renderParticipants(participants);
+        } else if (event.type === "player_left") {
+          participants = participants.filter((participant) => participant.id !== event.participantId);
+          renderParticipants(participants);
         } else if (event.type === "host_started" && event.session) {
           enterQuiz(event.session);
         }
       },
-      (connectionStatus) => {
+      (connectionStatus, connection) => {
+        if (connectionStatus === "connected" && connection?.reconnected) void refreshRoom();
         if (lobbyStatus.dataset.kind === "error") return;
         lobbyStatus.textContent = connectionStatus === "connected"
           ? "リアルタイム接続済み"
           : connectionStatus === "reconnecting"
           ? "再接続しています…"
+          : connectionStatus === "disconnected"
+          ? "長時間画面を離れたため退出しました"
           : "接続しています…";
         lobbyStatus.dataset.kind = connectionStatus === "connected" ? "connected" : "loading";
       }
     );
 
     void refreshRoom();
-    // 参加・開始通知はWebSocketで受け、15秒ごとの取得は通知を逃した場合の復旧用にする。
-    globalThis.setInterval(() => void refreshRoom(), 15_000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) void refreshRoom();
+    });
+    // 通常更新はWebSocketで行い、DB取得は通知取りこぼしに備えた低頻度の安全同期だけにする。
+    globalThis.setInterval(() => {
+      if (!document.hidden) void refreshRoom();
+    }, RECOVERY_SYNC_INTERVAL_MS);
   }
 
   function initGuide() {
@@ -697,7 +794,7 @@ import {
               <figure class="guide-image"><img src="./assets/tutorial/room.png" alt="ロケットの周りにクルーが集まるルーム画面"></figure>
             </li>
             <li class="guide-step">
-              <div class="guide-step-copy"><b>3</b><div><h3>Web基礎クイズに回答</h3><p>1問10秒。時間内は回答を変更でき、その後5秒間で答えを確認します。</p></div></div>
+              <div class="guide-step-copy"><b>3</b><div><h3>Web基礎クイズに回答</h3><p>1問15秒。時間内は回答を変更でき、その後5秒間で答えを確認します。</p></div></div>
               <figure class="guide-image"><img src="./assets/tutorial/quiz.png" alt="四つの選択肢から回答するクイズ画面"></figure>
             </li>
             <li class="guide-step">
@@ -750,6 +847,27 @@ import {
     return "BASIC";
   }
 
+  function flightScoreFor(outcome) {
+    return Math.round(clamp(safeNumber(outcome?.flightScore, outcome?.altitude), 0, FLIGHT_SCORE_MAX));
+  }
+
+  function flightMeasureLabel(rank, isTeam = false) {
+    const label = rank.measure === "altitude" ? "到達高度" : "到達距離";
+    return isTeam ? `チーム${label}` : label;
+  }
+
+  function flightDistanceText(rank) {
+    const distance = formatFlightDistance(rank.distanceKm);
+    return `${rank.approximateDistance ? "約" : ""}${distance.text}`;
+  }
+
+  function flightProgressText(outcome) {
+    const progress = getFlightProgress(flightScoreFor(outcome));
+    if (!progress.nextRank) return `${progress.rank.distanceNote} · 最高等級に到達`;
+    return `${progress.rank.distanceNote} · ${progress.nextRank.name}まであと ` +
+      `${progress.remainingScore.toLocaleString("ja-JP")} pt`;
+  }
+
   function runClock(seconds, onTick, onComplete) {
     const startedAt = performance.now();
     let requestId = 0;
@@ -781,11 +899,13 @@ import {
     let currentQuestionToken = null;
     let reviewingIndex = null;
     let syncing = false;
+    let syncRequested = false;
     let rendering = false;
     let finished = false;
     let phaseToken = 0;
     let cancelClock = () => {};
     let answerQueue = Promise.resolve();
+    let eventQueue = Promise.resolve();
     let syncTimer = null;
 
     globalThis.addEventListener("pagehide", () => {
@@ -839,7 +959,7 @@ import {
         if (syncTimer !== null) globalThis.clearInterval(syncTimer);
         state.outcome = null;
         state.status = "rocket";
-        goTo("./rocket.html", state, true);
+        goTo("./rocket-build.html", state, true);
       } catch (error) {
         elements.feedbackIcon.textContent = "!";
         elements.feedbackTitle.textContent = "結果を取得できませんでした";
@@ -857,27 +977,33 @@ import {
       state.quiz.records = Array(quizConfig.questionCount).fill(null);
       state.quiz.progressToken = attempt.progressToken;
       state.metrics = null;
+      state.teamMetrics = null;
       state.outcome = null;
       persist(state);
     }
 
     async function gradeQuestion(index, questionToken, showFeedback) {
       let result;
-      for (let attempt = 0; attempt < 12; attempt += 1) {
+      const retryDelays = [300, 800];
+      for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
         try {
-          result = await requestApi(`/api/quiz/questions/${index}/grade`, {
+          result = await requestApi(
+            `/api/sessions/${encodeURIComponent(sessionId)}/quiz/questions/${index}/grade`,
+            {
             method: "POST",
+            headers: bearerHeaders(auth),
             body: JSON.stringify({
               questionToken,
               selectedOption: Number.isInteger(state.quiz.answers[index])
                 ? state.quiz.answers[index]
                 : null
             })
-          });
+            }
+          );
           break;
         } catch (error) {
-          if (error.code !== "QUIZ_REVIEW_NOT_READY" || attempt === 11) throw error;
-          await new Promise((resolve) => globalThis.setTimeout(resolve, 100));
+          if (error.code !== "QUIZ_REVIEW_NOT_READY" || attempt === retryDelays.length) throw error;
+          await new Promise((resolve) => globalThis.setTimeout(resolve, retryDelays[attempt]));
         }
       }
 
@@ -895,6 +1021,7 @@ import {
       persist(state);
 
       if (showFeedback) {
+        elements.crewReaction.setState(result.correct ? "correct" : "incorrect");
         if (result.correct) launchRoomCorrectConfetti();
         [...elements.answers.children].forEach((button, answerIndex) => {
           button.disabled = true;
@@ -966,7 +1093,10 @@ import {
           elements.reviewCount.textContent = String(shown);
           elements.timer.style.setProperty("--timer-progress", String(ratio));
         },
-        () => void syncSession()
+        () => globalThis.setTimeout(() => {
+          // question_startedが届かなかった場合だけ、答え合わせ終了後にDBから1回復旧する。
+          if (!finished && currentRenderedIndex === index) void syncSession();
+        }, 1_000)
       );
     }
 
@@ -985,6 +1115,7 @@ import {
       document.querySelectorAll(".correct-confetti").forEach((effect) => effect.remove());
 
       elements.card.dataset.mode = "answer";
+      elements.crewReaction.setState("waiting");
       elements.feedbackIcon.textContent = "✦";
       elements.feedbackTitle.textContent = "問題を読み込んでいます";
       elements.feedbackText.textContent = "ルームの進行と同期しています。";
@@ -1013,7 +1144,7 @@ import {
         elements.progress.style.width = `${((index + 1) / quizConfig.questionCount) * 100}%`;
         elements.timerLabel.textContent = "回答";
         elements.instruction.textContent = question.instruction;
-        elements.question.textContent = question.question;
+        renderHighlightedQuizCode(elements.question, question.question);
         elements.feedbackIcon.textContent = "✦";
         elements.feedbackTitle.textContent = "仲間と同じ問題に挑戦中です";
         elements.feedbackText.textContent = "選んだ答えはルームへ送信され、時間内なら変更できます。";
@@ -1054,17 +1185,50 @@ import {
           elements.answers.append(button);
         });
 
-        // 通常はWSのquestion_endedで即座にshowReviewへ進む。ここは、そのWS通知を
-        // 受け取れなかった場合の壁時計フォールバック(reviewEndsAtは概算値)。
-        const remainingSeconds = Math.max(0.05, (answerEndTime(session) - Date.now()) / 1000);
-        cancelClock = runClock(
-          remainingSeconds,
-          (shown, ratio) => {
-            elements.timerValue.textContent = String(shown);
-            elements.timer.style.setProperty("--timer-progress", String(ratio));
-          },
-          () => void showReview(index, token, Date.now() + quizConfig.reviewTimeSeconds * 1000)
-        );
+        const questionStartsAt = session.questionStartedAt
+          ? Date.parse(session.questionStartedAt)
+          : Date.now();
+        const beginAnswerPhase = () => {
+          if (token !== phaseToken || reviewingIndex === index) return;
+          elements.timerLabel.textContent = "回答";
+          elements.feedbackTitle.textContent = `${session.answerTimeSeconds}秒間は何度でも回答を変更できます`;
+          [...elements.answers.children].forEach((button) => button.disabled = false);
+          // 通常はWSのquestion_endedで即座にshowReviewへ進む。ここは、そのWS通知を
+          // 受け取れなかった場合の壁時計フォールバック(reviewEndsAtは概算値)。
+          const remainingSeconds = Math.max(
+            0.05,
+            (answerEndTime(session) - Date.now()) / 1000,
+          );
+          cancelClock = runClock(
+            remainingSeconds,
+            (shown, ratio) => {
+              elements.timerValue.textContent = String(shown);
+              elements.timer.style.setProperty("--timer-progress", String(ratio));
+            },
+            () =>
+              void showReview(
+                index,
+                token,
+                Date.now() + quizConfig.reviewTimeSeconds * 1000,
+              ),
+          );
+        };
+        const startsInSeconds = (questionStartsAt - Date.now()) / 1000;
+        if (startsInSeconds > 0.02) {
+          elements.timerLabel.textContent = "開始";
+          elements.feedbackTitle.textContent = "全員共通の開始時刻を待っています";
+          [...elements.answers.children].forEach((button) => button.disabled = true);
+          cancelClock = runClock(
+            startsInSeconds,
+            (shown, ratio) => {
+              elements.timerValue.textContent = String(shown);
+              elements.timer.style.setProperty("--timer-progress", String(ratio));
+            },
+            beginAnswerPhase,
+          );
+        } else {
+          beginAnswerPhase();
+        }
       } catch (error) {
         if (token !== phaseToken) return;
         elements.feedbackIcon.textContent = "!";
@@ -1076,43 +1240,101 @@ import {
     }
 
     async function syncSession() {
-      if (syncing || finished) return;
+      if (finished) return;
+      // Do not drop a WebSocket/timer request that arrives while a previous snapshot or question
+      // is still loading. The active runner will reconcile once more before releasing the lock.
+      syncRequested = true;
+      if (syncing) return;
       syncing = true;
       try {
-        const session = await requestApi(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-          headers: bearerHeaders(auth)
-        });
-        currentSession = session;
-        if (session.questionCount !== quizConfig.questionCount) {
-          throw new Error("ルームとクイズの問題数が一致していません。ルームを作り直してください。");
-        }
+        while (syncRequested && !finished) {
+          syncRequested = false;
+          try {
+            const session = await requestApi(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+              headers: bearerHeaders(auth)
+            });
+            currentSession = session;
+            if (session.questionCount !== quizConfig.questionCount) {
+              throw new Error("ルームとクイズの問題数が一致していません。ルームを作り直してください。");
+            }
 
-        if (session.status === "completed") {
-          await catchUpTo(session.questionCount);
-          await finishQuiz();
-          return;
-        }
-        if (session.currentQuestionIndex === null) return;
+            if (session.status === "completed") {
+              await catchUpTo(session.questionCount);
+              await finishQuiz();
+              continue;
+            }
+            if (session.currentQuestionIndex === null) continue;
 
-        await catchUpTo(session.currentQuestionIndex);
-        if (state.quiz.index === session.currentQuestionIndex) {
-          await renderQuestion(session);
-          // WSのquestion_endedを取りこぼした場合の壁時計フォールバック(reviewEndsAtは概算値)。
-          if (
-            currentRenderedIndex === session.currentQuestionIndex &&
-            reviewingIndex !== session.currentQuestionIndex && Date.now() >= answerEndTime(session)
-          ) {
-            const fallbackReviewEndsAt = answerEndTime(session) +
-              quizConfig.reviewTimeSeconds * 1000;
-            await showReview(session.currentQuestionIndex, phaseToken, fallbackReviewEndsAt);
+            await catchUpTo(session.currentQuestionIndex);
+            if (state.quiz.index === session.currentQuestionIndex) {
+              await renderQuestion(session);
+              // WSのquestion_endedを取りこぼした場合の壁時計フォールバック(reviewEndsAtは概算値)。
+              if (
+                currentRenderedIndex === session.currentQuestionIndex &&
+                reviewingIndex !== session.currentQuestionIndex &&
+                (session.questionReviewStartedAt || Date.now() >= answerEndTime(session))
+              ) {
+                const fallbackReviewEndsAt = session.reviewEndsAt
+                  ? Date.parse(session.reviewEndsAt)
+                  : answerEndTime(session) + quizConfig.reviewTimeSeconds * 1000;
+                await showReview(session.currentQuestionIndex, phaseToken, fallbackReviewEndsAt);
+              }
+            }
+          } catch (error) {
+            elements.feedbackIcon.textContent = "!";
+            elements.feedbackTitle.textContent = "ルームとの同期に失敗しました";
+            elements.feedbackText.textContent = error.message;
           }
         }
-      } catch (error) {
-        elements.feedbackIcon.textContent = "!";
-        elements.feedbackTitle.textContent = "ルームとの同期に失敗しました";
-        elements.feedbackText.textContent = error.message;
       } finally {
         syncing = false;
+      }
+    }
+
+    async function applyQuestionStarted(event) {
+      if (
+        finished || !currentSession || event.sessionId !== sessionId ||
+        !Number.isInteger(event.questionIndex)
+      ) {
+        await syncSession();
+        return;
+      }
+      const session = {
+        ...currentSession,
+        status: "active",
+        currentQuestionIndex: event.questionIndex,
+        answerTimeSeconds: event.timeLimitSeconds,
+        questionStartedAt: event.questionStartedAt,
+        questionReviewStartedAt: null,
+        reviewEndsAt: null
+      };
+      currentSession = session;
+      try {
+        await catchUpTo(event.questionIndex);
+        await renderQuestion(session);
+      } catch {
+        // index飛びやローカル進捗との不整合時だけ、永続化された状態から復旧する。
+        await syncSession();
+      }
+    }
+
+    async function applyQuestionEnded(event) {
+      if (!Number.isInteger(event.questionIndex) || !Number.isFinite(event.reviewEndsAt)) {
+        await syncSession();
+        return;
+      }
+      await showReview(event.questionIndex, phaseToken, event.reviewEndsAt);
+      if (!finished && reviewingIndex !== event.questionIndex && state.quiz.index <= event.questionIndex) {
+        await syncSession();
+      }
+    }
+
+    async function applyAllQuestionsDone() {
+      try {
+        await catchUpTo(currentSession?.questionCount ?? quizConfig.questionCount);
+        await finishQuiz();
+      } catch {
+        await syncSession();
       }
     }
 
@@ -1128,20 +1350,23 @@ import {
 
     if (!finished) {
       connectRoomSocket(auth, (event) => {
-        if (event.type === "question_started" || event.type === "all_questions_done") {
-          void syncSession();
-          return;
+        if (event.type === "question_started") {
+          eventQueue = eventQueue.then(() => applyQuestionStarted(event));
+        } else if (event.type === "question_ended") {
+          eventQueue = eventQueue.then(() => applyQuestionEnded(event));
+        } else if (event.type === "all_questions_done") {
+          eventQueue = eventQueue.then(() => applyAllQuestionsDone());
         }
-        if (event.type === "question_ended") {
-          // ポーリングや壁時計チェックを待たず、受信した瞬間に答え合わせへ進める。
-          // まだ描画が追いついていない場合はshowReview内のガードで無視され、
-          // 直後のsyncSessionで通常の追いつき処理に任せる。
-          void showReview(event.questionIndex, phaseToken, event.reviewEndsAt);
-          void syncSession();
-        }
+      }, (connectionStatus, connection) => {
+        if (connectionStatus === "connected" && connection?.reconnected) void syncSession();
       });
-      // WebSocketを通常経路とし、取りこぼし・別インスタンス時だけ10秒ごとに復旧する。
-      syncTimer = globalThis.setInterval(() => void syncSession(), 10_000);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) void syncSession();
+      });
+      // 通常進行はWebSocketイベントを直接適用し、60秒ごとの取得は復旧用に限定する。
+      syncTimer = globalThis.setInterval(() => {
+        if (!document.hidden) void syncSession();
+      }, RECOVERY_SYNC_INTERVAL_MS);
     }
   }
 
@@ -1166,7 +1391,11 @@ import {
       feedbackIcon: document.querySelector("#feedback-icon"),
       feedbackTitle: document.querySelector("#feedback-title"),
       feedbackText: document.querySelector("#feedback-text"),
-      reviewCount: document.querySelector("#review-count")
+      reviewCount: document.querySelector("#review-count"),
+      crewReaction: createQuizCrewReaction(document.querySelector("#quiz-crew-reaction"), {
+        color: state.player.color,
+        name: state.player.name,
+      }),
     };
 
     elements.avatar.style.setProperty("--crew-color", state.player.color);
@@ -1198,9 +1427,10 @@ import {
         }
       } else if (!state.metrics) {
         state.metrics = computeMetrics(state.quiz.records);
+        state.teamMetrics = null;
         persist(state);
       }
-      goTo("./rocket.html", state, true);
+      goTo("./rocket-build.html", state, true);
       return;
     }
 
@@ -1228,6 +1458,7 @@ import {
         state.quiz.records = Array(quizConfig.questionCount).fill(null);
         state.quiz.progressToken = attempt.progressToken;
         state.metrics = null;
+        state.teamMetrics = null;
         state.outcome = null;
         persist(state);
       } catch (error) {
@@ -1280,9 +1511,10 @@ import {
       cancelClock();
       state.quiz.index = quizConfig.questionCount;
       state.metrics = computeMetrics(state.quiz.records);
+      state.teamMetrics = null;
       state.outcome = null;
       state.status = "rocket";
-      goTo("./rocket.html", state, true);
+      goTo("./rocket-build.html", state, true);
     }
 
     async function showReview(token) {
@@ -1311,6 +1543,7 @@ import {
       if (token !== phaseToken) return;
 
       const isCorrect = result.correct;
+      elements.crewReaction.setState(isCorrect ? "correct" : "incorrect");
       if (isCorrect) launchCorrectConfetti();
       state.quiz.answers[questionIndex] = selectedChoice;
       state.quiz.records[questionIndex] = {
@@ -1365,6 +1598,7 @@ import {
       cancelClock();
 
       elements.card.dataset.mode = "answer";
+      elements.crewReaction.setState("waiting");
       elements.feedbackIcon.textContent = "✦";
       elements.feedbackTitle.textContent = "問題を読み込んでいます";
       elements.feedbackText.textContent = "少し待ってください。";
@@ -1395,7 +1629,7 @@ import {
       elements.timerValue.textContent = String(start.answerTimeSeconds);
       elements.timer.style.setProperty("--timer-progress", "1");
       elements.instruction.textContent = question.instruction;
-      elements.question.textContent = question.question;
+      renderHighlightedQuizCode(elements.question, question.question);
       elements.feedbackIcon.textContent = "✦";
       elements.feedbackTitle.textContent = `${start.answerTimeSeconds}秒間は何度でも回答を変更できます`;
       elements.feedbackText.textContent = "選んだ答えはオレンジ色で表示されます。";
@@ -1445,10 +1679,13 @@ import {
       hatch: document.querySelector("#rlHatch"), sky: document.querySelector("#rlSky"), ground: document.querySelector("#rlGroundLine"),
       approach: document.querySelector("#approachBody"), countdown: document.querySelector("#rlCountdown"), caption: document.querySelector("#flightCaption"),
       resultBg: document.querySelector("#resultBg"), resultTitle: document.querySelector("#resultTitle"), resultIllustration: document.querySelector("#resultIllustration"),
-      impactAltitude: document.querySelector("#impactAltitude"), resultDest: document.querySelector("#resultDest"), resultButton: document.querySelector("#againBtn")
+      impactAltitude: document.querySelector("#impactAltitude"), distanceLabel: document.querySelector("#rocket-distance-label"),
+      distanceUnit: document.querySelector("#rocket-distance-unit"),
+      resultDest: document.querySelector("#resultDest"), resultButton: document.querySelector("#againBtn")
     };
-    const outcome = calculateOutcome(state.metrics);
-    const rank = getFlightRank(outcome.altitude);
+    const outcome = calculateOutcome(state.teamMetrics || state.metrics);
+    const score = flightScoreFor(outcome);
+    const rank = getFlightRank(score);
     const resultContent = globalThis.ROCKET_LAUNCH_RESULTS || {};
     const botColors = ["oklch(0.62 0.20 24)", "oklch(0.62 0.17 253)", "oklch(0.83 0.16 93)", state.player.color];
     const botSpots = [{ left: "28%", top: "78%" }, { left: "38%", top: "84%" }, { left: "60%", top: "84%" }, { left: "71%", top: "77%" }];
@@ -1497,8 +1734,17 @@ import {
       elements.resultBg.className = `rl-result-bg rl-bg-${rank.key}`;
       elements.resultBg.style.background = content.backgroundGradient || "";
       elements.resultIllustration.innerHTML = content.svgMarkup || "";
-      elements.impactAltitude.textContent = (outcome.altitude * 1000).toLocaleString("ja-JP");
-      elements.resultDest.textContent = `到達地点: ${rank.destination} / 到達距離 ${(outcome.altitude * 1000).toLocaleString("ja-JP")}km`;
+      const distance = formatFlightDistance(rank.distanceKm);
+      const distanceLabel = flightMeasureLabel(rank, Boolean(state.teamMetrics));
+      elements.impactAltitude.textContent = distance.formattedValue;
+      elements.distanceUnit.textContent = distance.unit;
+      elements.distanceLabel.textContent = distanceLabel;
+      elements.distanceLabel.parentElement.setAttribute(
+        "aria-label",
+        `${distanceLabel} ${flightDistanceText(rank)}`,
+      );
+      elements.resultDest.textContent = `到達地点: ${rank.destination} / ${rank.distanceNote} ` +
+        `${flightDistanceText(rank)} / 航行スコア ${score.toLocaleString("ja-JP")} pt`;
       elements.approach.classList.remove("is-visible");
       state.outcome = outcome; state.status = "result"; persist(state); showScreen(elements.result);
     }
@@ -1541,17 +1787,24 @@ import {
     };
   }
 
-  function animateNumber(element, target, duration = 850) {
+  function animateNumber(element, target, duration = 850, fractionDigits = 0) {
     if (!element) return;
+    const format = (value) => value.toLocaleString("ja-JP", {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    });
     if (reducedMotion) {
-      element.textContent = target.toLocaleString("ja-JP");
+      element.textContent = format(target);
       return;
     }
     const startedAt = performance.now();
     function frame(now) {
       const progress = clamp((now - startedAt) / duration, 0, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
-      element.textContent = Math.round(target * eased).toLocaleString("ja-JP");
+      const value = fractionDigits
+        ? Number((target * eased).toFixed(fractionDigits))
+        : Math.round(target * eased);
+      element.textContent = format(value);
       if (progress < 1) globalThis.requestAnimationFrame(frame);
     }
     globalThis.requestAnimationFrame(frame);
@@ -1573,10 +1826,24 @@ import {
     });
   }
 
-  function radarEntries() {
-    const categoryScores = state.metrics && state.metrics.categoryScores ? state.metrics.categoryScores : {};
+  function radarEntries(sourceScores) {
+    const categoryScores = sourceScores ||
+      (state.metrics && state.metrics.categoryScores ? state.metrics.categoryScores : {});
     const labels = ["フロントエンド", "バックエンド", "データベース", "API", "インフラ", "セキュリティ"];
     return labels.map((label) => ({ label, value: Math.round(clamp(safeNumber(categoryScores[label]), 0, 100)) }));
+  }
+
+  function getTeamRadarEntries() {
+    const team = authoritativeResults?.team;
+    if (
+      !team?.categoryScores ||
+      typeof team.categoryScores !== "object" ||
+      Object.keys(team.categoryScores).length === 0
+    ) return null;
+    const entries = radarEntries(team.categoryScores);
+    return entries.every((entry) => Object.hasOwn(team.categoryScores, entry.label))
+      ? entries
+      : null;
   }
 
   function getCrewProfile() {
@@ -1591,13 +1858,13 @@ import {
     return [centerX + Math.cos(angle) * scaled, centerY + Math.sin(angle) * scaled];
   }
 
-  function renderRadar(svg) {
+  function renderRadar(svg, categoryScores) {
     if (!svg) return;
     const namespace = "http://www.w3.org/2000/svg";
     const centerX = 180;
     const centerY = 137;
     const radius = 88;
-    const values = radarEntries();
+    const values = radarEntries(categoryScores);
     svg.replaceChildren();
 
     const make = (name, attributes = {}) => {
@@ -1633,8 +1900,10 @@ import {
   function initResult() {
     if (!requireOutcome()) return;
 
-    const copy = resultCopy(state.outcome, state.metrics);
-    const rank = getFlightRank(state.outcome.altitude);
+    const copy = resultCopy(state.outcome, state.teamMetrics || state.metrics);
+    const score = flightScoreFor(state.outcome);
+    const rank = getFlightRank(score);
+    const distance = formatFlightDistance(rank.distanceKm);
     app.dataset.outcome = state.outcome.kind;
     document.querySelector("#result-player-avatar").style.setProperty("--crew-color", state.player.color);
     document.querySelector("#button-crew").style.setProperty("--crew-color", state.player.color);
@@ -1644,44 +1913,163 @@ import {
     document.querySelector("#result-message").textContent = copy.message;
     document.querySelector("#result-rank").textContent = rank.name;
     document.querySelector("#result-rank").style.setProperty("--rank-color", rank.color);
+    document.querySelector("#result-rank-progress").textContent = flightProgressText(state.outcome);
+    document.querySelector("#result-distance-label").textContent =
+      flightMeasureLabel(rank, Boolean(state.teamMetrics));
+    document.querySelector("#result-flight-score").textContent =
+      `航行スコア ${score.toLocaleString("ja-JP")} / ${FLIGHT_SCORE_MAX.toLocaleString("ja-JP")}`;
+    document.querySelector("#result-distance-unit").textContent = distance.unit;
     animateNumber(document.querySelector("#result-power"), state.metrics.power);
     animateNumber(document.querySelector("#result-safety"), state.metrics.safety);
-    animateNumber(document.querySelector("#result-altitude"), state.outcome.altitude * 1000, 1100);
+    animateNumber(
+      document.querySelector("#result-altitude"),
+      distance.value,
+      1100,
+      distance.fractionDigits,
+    );
     addResultSparkles(document.querySelector("#result-sparkles"));
     renderRadar(document.querySelector("#result-radar"));
 
     const auth = state.room.sessionId ? loadRoomAuth(state.room.code) : null;
+    const resultViewTabs = document.querySelector("#result-view-tabs");
+    const flightPane = document.querySelector("#result-flight-pane");
+    const resultViewButtons = [...document.querySelectorAll("[data-result-view]")];
     const crewResults = document.querySelector("#crew-results");
     const crewResultsStatus = document.querySelector("#crew-results-status");
     const crewResultsList = document.querySelector("#crew-results-list");
-    if (auth && crewResults && crewResultsStatus && crewResultsList) {
-      crewResults.hidden = false;
-      const resultsPromise = authoritativeResults
-        ? Promise.resolve(authoritativeResults)
-        : fetchAuthoritativeResults(auth);
-      void resultsPromise.then((results) => {
+    const teamOverview = document.querySelector("#team-result-overview");
+    const publishButton = document.querySelector("#result-publish-button");
+    const refreshButton = document.querySelector("#result-refresh-button");
+    if (
+      auth && resultViewTabs && flightPane && resultViewButtons.length === 2 && crewResults &&
+      crewResultsStatus && crewResultsList && teamOverview && publishButton && refreshButton
+    ) {
+      function activateResultView(view, moveFocus = false) {
+        const showTeam = view === "team";
+        flightPane.hidden = showTeam;
+        crewResults.hidden = !showTeam;
+        resultViewButtons.forEach((button) => {
+          const active = button.dataset.resultView === view;
+          button.classList.toggle("is-active", active);
+          button.setAttribute("aria-selected", String(active));
+          button.tabIndex = active ? 0 : -1;
+          if (active && moveFocus) button.focus();
+        });
+      }
+
+      resultViewButtons.forEach((button) => {
+        button.addEventListener("click", () => activateResultView(button.dataset.resultView));
+      });
+      resultViewTabs.addEventListener("keydown", (event) => {
+        const currentIndex = resultViewButtons.indexOf(document.activeElement);
+        if (currentIndex < 0) return;
+        let nextIndex = currentIndex;
+        if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % resultViewButtons.length;
+        else if (event.key === "ArrowLeft") {
+          nextIndex = (currentIndex - 1 + resultViewButtons.length) % resultViewButtons.length;
+        } else if (event.key === "Home") nextIndex = 0;
+        else if (event.key === "End") nextIndex = resultViewButtons.length - 1;
+        else return;
+        event.preventDefault();
+        activateResultView(resultViewButtons[nextIndex].dataset.resultView, true);
+      });
+      resultViewTabs.hidden = false;
+      activateResultView("flight");
+
+      function renderSharedResults(results) {
+        authoritativeResults = results;
+        const personalEntry = results.participants.find((participant) => participant.isRequester);
+        publishButton.dataset.published = String(Boolean(personalEntry && personalEntry.published));
+        publishButton.textContent = personalEntry && personalEntry.published
+          ? "結果の公開をやめる"
+          : "自分の結果をチームに公開";
+        teamOverview.hidden = false;
+        document.querySelector("#team-result-power").textContent = `${results.team.power}%`;
+        document.querySelector("#team-result-safety").textContent = `${results.team.safety}%`;
+        document.querySelector("#team-result-completion").textContent =
+          `${results.team.completionRate}%`;
+        const teamRadar = document.querySelector("#team-result-radar");
+        teamRadar.hidden = false;
+        renderRadar(teamRadar, results.team.categoryScores);
+
         crewResultsList.replaceChildren();
-        results.participants.forEach((participant) => {
+        const visible = results.participants.filter((participant) =>
+          participant.isRequester || participant.published
+        ).sort((left, right) =>
+          safeNumber(right.power) - safeNumber(left.power) ||
+          left.displayName.localeCompare(right.displayName, "ja")
+        );
+        const privateMembers = results.participants.filter((participant) =>
+          !participant.isRequester && !participant.published
+        ).sort((left, right) => left.displayName.localeCompare(right.displayName, "ja"));
+
+        [...visible, ...privateMembers].forEach((participant) => {
           const item = document.createElement("li");
-          if (participant.participantId === auth.participantId) item.classList.add("is-you");
+          if (participant.isRequester) item.classList.add("is-you");
+          if (!participant.isRequester && !participant.published) item.classList.add("is-private");
 
           const name = document.createElement("span");
           name.className = "crew-results-name";
-          name.textContent = participant.displayName;
+          name.textContent = participant.isRequester
+            ? `${participant.displayName}（あなた）`
+            : participant.displayName;
           const detail = document.createElement("span");
           detail.className = "crew-results-detail";
-          detail.textContent = `${participant.correctCount}/${results.questionCount}問正解`;
+          const canSee = participant.isRequester || participant.published;
+          detail.textContent = canSee
+            ? `${participant.correctCount}/${results.questionCount}問正解`
+            : "個人結果は非公開";
           const score = document.createElement("strong");
           score.className = "crew-results-score";
-          score.textContent = `${participant.power}%`;
+          score.textContent = canSee ? `${participant.power}%` : "🔒";
           item.append(name, detail, score);
           crewResultsList.append(item);
         });
         crewResultsStatus.hidden = false;
         crewResultsStatus.textContent = results.participants.length
-          ? `チーム出力 ${results.team.power}% / 安全性 ${results.team.safety}% / 回答完了 ${results.team.completionRate}%`
+          ? `${results.team.participantCount}人のチーム集計です。公開したメンバーだけ個人結果を確認できます。`
           : "共有結果はありません。";
-      }).catch((error) => {
+      }
+
+      async function refreshSharedResults() {
+        try {
+          renderSharedResults(await fetchAuthoritativeResults(auth));
+        } catch (error) {
+          crewResultsStatus.textContent = `共有結果を読み込めませんでした。${error.message}`;
+        }
+      }
+
+      publishButton.addEventListener("click", async () => {
+        if (publishButton.disabled) return;
+        publishButton.disabled = true;
+        try {
+          await requestApi(
+            `/api/sessions/${encodeURIComponent(state.room.sessionId)}/results/publication`,
+            {
+              method: "PUT",
+              headers: bearerHeaders(auth),
+              body: JSON.stringify({ published: publishButton.dataset.published !== "true" })
+            }
+          );
+          await refreshSharedResults();
+        } catch (error) {
+          crewResultsStatus.textContent = `公開設定を変更できませんでした。${error.message}`;
+        } finally {
+          publishButton.disabled = false;
+        }
+      });
+
+      refreshButton.addEventListener("click", async () => {
+        if (refreshButton.disabled) return;
+        refreshButton.disabled = true;
+        await refreshSharedResults();
+        refreshButton.disabled = false;
+      });
+
+      const resultsPromise = authoritativeResults
+        ? Promise.resolve(authoritativeResults)
+        : fetchAuthoritativeResults(auth);
+      void resultsPromise.then(renderSharedResults).catch((error) => {
         crewResultsStatus.textContent = `共有結果を読み込めませんでした。${error.message}`;
       });
     }
@@ -1767,7 +2155,16 @@ import {
     return size;
   }
 
-  function drawCanvasRadar(context, entries, centerX, centerY, radius, color, family) {
+  function drawCanvasRadar(
+    context,
+    entries,
+    centerX,
+    centerY,
+    radius,
+    color,
+    family,
+    teamEntries = null
+  ) {
     context.save();
     context.lineJoin = "round";
     [25, 50, 75, 100].forEach((level) => {
@@ -1802,6 +2199,22 @@ import {
     context.lineWidth = 4;
     context.fill();
     context.stroke();
+    if (teamEntries) {
+      context.save();
+      context.beginPath();
+      teamEntries.forEach((entry, index) => {
+        const [x, y] = radarPoint(index, entry.value, centerX, centerY, radius);
+        if (index === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      });
+      context.closePath();
+      context.setLineDash([6, 8]);
+      context.lineCap = "round";
+      context.strokeStyle = "#ffcf70";
+      context.lineWidth = 4;
+      context.stroke();
+      context.restore();
+    }
     entries.forEach((entry, index) => {
       const [x, y] = radarPoint(index, 125, centerX, centerY, radius);
       context.fillStyle = "#b7c7d1";
@@ -1877,10 +2290,19 @@ import {
     context.font = `900 ${nameSize}px ${family}`;
     context.fillText(state.player.name, 450, 267);
 
+    const score = flightScoreFor(state.outcome);
+    const rank = getFlightRank(score);
+    const distance = formatFlightDistance(rank.distanceKm);
     const metrics = [
       { label: "OUTPUT / 正答率", value: `${state.metrics.power}%`, color: "#62e4ec" },
       { label: "SAFETY / 分野バランス", value: `${state.metrics.safety}%`, color: "#c9f765" },
-      { label: "DISTANCE / 到達距離", value: `${(state.outcome.altitude * 1000).toLocaleString("ja-JP")} km`, color: "#ff9b55" }
+      {
+        label: state.teamMetrics
+          ? `TEAM ${rank.measure === "altitude" ? "ALTITUDE" : "DISTANCE"} / ${flightMeasureLabel(rank, true)}`
+          : `${rank.measure === "altitude" ? "ALTITUDE" : "DISTANCE"} / ${flightMeasureLabel(rank)}`,
+        value: `${rank.approximateDistance ? "≈ " : ""}${distance.text}`,
+        color: "#ff9b55"
+      }
     ];
 
     const metricLayout = [
@@ -1905,7 +2327,6 @@ import {
       context.fillText(metric.value, x + 20, y + 78);
     });
 
-    const rank = getFlightRank(state.outcome.altitude);
     const profile = getCrewProfile();
     context.textAlign = "left";
     context.fillStyle = "#8296a7";
@@ -1926,7 +2347,23 @@ import {
     context.fillStyle = "#8296a7";
     context.font = `900 14px ${family}`;
     context.fillText("6 FIELD RADAR", 1010, 230);
-    drawCanvasRadar(context, radarEntries(), 930, 420, 155, color, family);
+    const teamEntries = getTeamRadarEntries();
+    if (teamEntries) {
+      context.save();
+      context.beginPath();
+      context.moveTo(1010, 250);
+      context.lineTo(1050, 250);
+      context.setLineDash([6, 8]);
+      context.lineCap = "round";
+      context.strokeStyle = "#ffcf70";
+      context.lineWidth = 4;
+      context.stroke();
+      context.restore();
+      context.fillStyle = "#ffcf70";
+      context.font = `900 12px ${family}`;
+      context.fillText("TEAM AVG", 1062, 255);
+    }
+    drawCanvasRadar(context, radarEntries(), 930, 420, 155, color, family, teamEntries);
 
     context.fillStyle = "#ff7541";
     context.fillRect(0, height - 16, width, 16);
@@ -1947,8 +2384,15 @@ import {
     document.querySelector("#card-player-name").textContent = state.player.name;
     document.querySelector("#card-power").textContent = state.metrics.power;
     document.querySelector("#card-safety").textContent = state.metrics.safety;
-    document.querySelector("#card-altitude").textContent = (state.outcome.altitude * 1000).toLocaleString("ja-JP");
-    document.querySelector("#card-rank").textContent = getFlightRank(state.outcome.altitude).name;
+    const score = flightScoreFor(state.outcome);
+    const rank = getFlightRank(score);
+    const distance = formatFlightDistance(rank.distanceKm);
+    document.querySelector("#card-altitude").textContent = distance.formattedValue;
+    document.querySelector("#card-distance-unit").textContent = distance.unit;
+    document.querySelector("#card-distance-label").textContent = state.teamMetrics
+      ? `TEAM ${rank.measure === "altitude" ? "ALTITUDE" : "DISTANCE"}`
+      : (rank.measure === "altitude" ? "ALTITUDE" : "DISTANCE");
+    document.querySelector("#card-rank").textContent = rank.name;
     const profile = getCrewProfile();
     document.querySelector("#card-role").textContent = profile.role;
     document.querySelector("#card-comment").textContent = profile.copy;
@@ -1992,6 +2436,8 @@ import {
     thresholds: Object.freeze({ output: OUTPUT_THRESHOLD, safety: SAFETY_THRESHOLD }),
     calculateOutcome,
     computeMetrics,
+    formatFlightDistance,
+    getFlightProgress,
     getFlightRank,
     ranks: FLIGHT_RANKS
   });
@@ -2007,6 +2453,7 @@ import {
         await fetchAuthoritativeResults(roomAuth);
       } catch {
         state.metrics = null;
+        state.teamMetrics = null;
         state.outcome = null;
         state.status = "quiz";
         persist(state);
@@ -2014,7 +2461,7 @@ import {
         return;
       }
       if (page === "rocket" && state.status === "rocket") state.outcome = null;
-      else state.outcome = calculateOutcome(state.metrics);
+      else state.outcome = calculateOutcome(state.teamMetrics || state.metrics);
       persist(state);
       connectRoomSocket(roomAuth);
     }

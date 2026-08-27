@@ -40,3 +40,42 @@ Deno.test("choice order migration preserves old sessions and versions new sessio
   assert.match(migration, /ALTER COLUMN choice_order_version SET DEFAULT 2/);
   assert.match(migration, /CHECK \(choice_order_version IN \(1, 2\)\)/);
 });
+
+Deno.test("result publication migration keeps personal results private by default", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/004_result_publication.sql", import.meta.url),
+  );
+
+  assert.match(migration, /ADD COLUMN result_published boolean NOT NULL DEFAULT false/);
+});
+
+Deno.test("quiz timing migration snapshots per-question times and review state", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/005_quiz_timing.sql", import.meta.url),
+  );
+
+  assert.match(migration, /ADD COLUMN question_answer_time_seconds smallint\[\]/);
+  assert.match(migration, /array_length\(question_answer_time_seconds, 1\) = question_count/);
+  assert.match(migration, /ADD COLUMN question_review_started_at timestamptz/);
+  assert.match(migration, /ADD COLUMN review_ends_at timestamptz/);
+});
+
+Deno.test("question set migration preserves old sessions and versions new sessions", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/006_quiz_question_set_version.sql", import.meta.url),
+  );
+
+  assert.match(migration, /ALTER COLUMN choice_order_version SET DEFAULT 3/);
+  assert.match(migration, /CHECK \(choice_order_version IN \(1, 2, 3\)\)/);
+});
+
+Deno.test("question bank migration stores per-user question selections", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/007_quiz_question_bank.sql", import.meta.url),
+  );
+
+  assert.match(migration, /CREATE TABLE quiz_question/);
+  assert.match(migration, /CREATE TABLE session_participant_question/);
+  assert.match(migration, /UNIQUE \(game_session_id, participant_id, question_id\)/);
+  assert.match(migration, /ALTER COLUMN choice_order_version SET DEFAULT 4/);
+});

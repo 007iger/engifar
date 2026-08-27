@@ -1,0 +1,308 @@
+[
+  {
+    "id": "database-update",
+    "category": "データベース",
+    "weight": 1,
+    "instruction": "idが3のユーザー名をAoiへ変更します。空欄に入るキーワードを選んでください。",
+    "question": "UPDATE users\n＿＿＿ name = 'Aoi'\nWHERE id = 3;",
+    "choices": [
+      "CHANGE",
+      "SET",
+      "VALUE",
+      "EDIT"
+    ],
+    "answer": 1,
+    "explanation": "UPDATE文ではSETを使って変更する列と値を指定します。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-delete",
+    "category": "データベース",
+    "weight": 1,
+    "instruction": "終了済みセッションを1件削除します。空欄に入るSQL命令を選んでください。",
+    "question": "＿＿＿ FROM sessions\nWHERE id = $1;",
+    "choices": [
+      "REMOVE",
+      "DROP",
+      "DELETE",
+      "CLEAR"
+    ],
+    "answer": 2,
+    "explanation": "DELETE FROMは条件に一致する行を削除します。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-order-desc",
+    "category": "データベース",
+    "weight": 1,
+    "instruction": "参加者をスコアの高い順に並べます。空欄に入るキーワードを選んでください。",
+    "question": "SELECT * FROM participants\nORDER BY score ＿＿＿;",
+    "choices": [
+      "UP",
+      "DESC",
+      "ASC",
+      "HIGH"
+    ],
+    "answer": 1,
+    "explanation": "DESCを指定すると値の大きい順に並びます。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-is-null",
+    "category": "データベース",
+    "weight": 1,
+    "instruction": "まだ終了していないルームだけを取得します。finished_atがNULLの行を選ぶ条件を選んでください。",
+    "question": "SELECT * FROM rooms\nWHERE finished_at ＿＿＿;",
+    "choices": [
+      "= NULL",
+      "IS NULL",
+      "== NULL",
+      "HAS NULL"
+    ],
+    "answer": 1,
+    "explanation": "SQLでNULLを判定するときは=ではなくIS NULLを使います。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-count",
+    "category": "データベース",
+    "weight": 1,
+    "instruction": "answersテーブルに保存された回答件数を数えます。空欄に入る集計関数を選んでください。",
+    "question": "SELECT ＿＿＿(*) FROM answers;",
+    "choices": [
+      "SUM",
+      "SIZE",
+      "COUNT",
+      "TOTAL"
+    ],
+    "answer": 2,
+    "explanation": "COUNT(*)は行数を数える集計関数です。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-limit",
+    "category": "データベース",
+    "weight": 1,
+    "answerTimeSeconds": 15,
+    "instruction": "注文を新しい順に並べ、先頭の10件だけを取ります。空欄に入るキーワードを選んでください。",
+    "question": "SELECT * FROM orders\nORDER BY created_at DESC\n＿＿＿ 10;",
+    "choices": [
+      "LIMIT",
+      "TOP",
+      "FIRST",
+      "MAX"
+    ],
+    "answer": 0,
+    "explanation": "LIMITは、返す行数の上限を指定します。",
+    "difficulty": 1
+  },
+  {
+    "id": "database-join-on",
+    "category": "データベース",
+    "weight": 1,
+    "instruction": "参加者と、その参加者が所属するルームをroom_idで結合します。結合条件を指定するキーワードを選んでください。",
+    "question": "SELECT p.name, r.code\nFROM participants p\nJOIN rooms r\n＿＿＿ p.room_id = r.id;",
+    "choices": [
+      "WHERE",
+      "ON",
+      "WITH",
+      "BY"
+    ],
+    "answer": 1,
+    "explanation": "JOINの結合条件はONで指定します。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-inner-join",
+    "category": "データベース",
+    "weight": 1,
+    "answerTimeSeconds": 15,
+    "instruction": "usersとordersをuser_idでつなぎ、両方にそろっている行だけを取ります。空欄に入る結合を選んでください。",
+    "question": "SELECT u.name, o.total\nFROM users u\n＿＿＿ orders o ON o.user_id = u.id;",
+    "choices": [
+      "INNER JOIN",
+      "OUTER JOIN",
+      "CROSS JOIN",
+      "MERGE JOIN"
+    ],
+    "answer": 0,
+    "explanation": "INNER JOINは、結合条件に一致した行だけを返します。",
+    "difficulty": 1
+  },
+  {
+    "id": "database-primary-key",
+    "category": "データベース",
+    "weight": 1,
+    "instruction": "roomsテーブルのidを各行を一意に識別する主キーにします。空欄を選んでください。",
+    "question": "id UUID ＿＿＿",
+    "choices": [
+      "UNIQUE ONLY",
+      "PRIMARY KEY",
+      "FOREIGN KEY",
+      "NOT DUPLICATE"
+    ],
+    "answer": 1,
+    "explanation": "PRIMARY KEYは各行を一意に識別するための制約です。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-not-null",
+    "category": "データベース",
+    "weight": 1,
+    "instruction": "roomsテーブルのcodeを必須項目にします。空欄に入る制約を選んでください。",
+    "question": "code TEXT ＿＿＿",
+    "choices": [
+      "NULLABLE",
+      "NOT NULL",
+      "UNIQUE",
+      "OPTIONAL"
+    ],
+    "answer": 1,
+    "explanation": "NOT NULL制約を付けると、その列へNULLを保存できなくなります。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-left-join",
+    "category": "データベース",
+    "weight": 2,
+    "instruction": "回答がまだない参加者も結果に残したままanswersを結合します。使うJOINを選んでください。",
+    "question": "SELECT p.name, a.answer\nFROM participants p\n＿＿＿ answers a ON a.participant_id = p.id;",
+    "choices": [
+      "INNER JOIN",
+      "RIGHT ONLY JOIN",
+      "LEFT JOIN",
+      "CROSS JOIN"
+    ],
+    "answer": 2,
+    "explanation": "LEFT JOINは左側のテーブルの行をすべて残し、対応する右側の行がなければNULLにします。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-foreign-key",
+    "category": "データベース",
+    "weight": 2,
+    "instruction": "participants.room_idがrooms.idを参照する外部キーになるようにします。空欄を選んでください。",
+    "question": "room_id UUID\n  REFERENCES ＿＿＿(id)",
+    "choices": [
+      "participants",
+      "answers",
+      "rooms",
+      "sessions"
+    ],
+    "answer": 2,
+    "explanation": "REFERENCES rooms(id)とするとroomsテーブルのidを参照する外部キーになります。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-unique",
+    "category": "データベース",
+    "weight": 2,
+    "answerTimeSeconds": 15,
+    "instruction": "同じメールアドレスの行が2件登録されるのを防ぎます。列に付ける制約を選んでください。",
+    "question": "CREATE TABLE users (\n  id serial PRIMARY KEY,\n  email text ＿＿＿\n);",
+    "choices": [
+      "UNIQUE",
+      "DISTINCT",
+      "SINGLE",
+      "INDEX"
+    ],
+    "answer": 0,
+    "explanation": "UNIQUE制約は、その列に同じ値が重複して入るのを防ぎます。",
+    "difficulty": 2
+  },
+  {
+    "id": "database-begin-transaction",
+    "category": "データベース",
+    "weight": 2,
+    "instruction": "複数の更新を1つのまとまりとして扱うトランザクションを開始します。空欄を選んでください。",
+    "question": "＿＿＿;\nUPDATE rooms SET status = 'finished' WHERE id = $1;\nUPDATE participants SET active = false WHERE room_id = $1;\nCOMMIT;",
+    "choices": [
+      "START DB",
+      "BEGIN",
+      "OPEN",
+      "LOCK"
+    ],
+    "answer": 1,
+    "explanation": "BEGINでトランザクションを開始し、COMMITまでの処理を1つのまとまりとして扱えます。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-rollback",
+    "category": "データベース",
+    "weight": 2,
+    "instruction": "トランザクション中にエラーが起きたため、それまでの変更を取り消します。空欄を選んでください。",
+    "question": "BEGIN;\n-- 更新処理\n＿＿＿;",
+    "choices": [
+      "UNDO",
+      "RESET",
+      "ROLLBACK",
+      "CANCEL"
+    ],
+    "answer": 2,
+    "explanation": "ROLLBACKは現在のトランザクションで行った変更を取り消します。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-commit",
+    "category": "データベース",
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "2つのUPDATEが両方成功したときだけ変更を確定させます。空欄に入る命令を選んでください。",
+    "question": "BEGIN;\nUPDATE accounts SET balance = balance - 100 WHERE id = 1;\nUPDATE accounts SET balance = balance + 100 WHERE id = 2;\n＿＿＿;",
+    "choices": [
+      "COMMIT",
+      "SAVE",
+      "APPLY",
+      "FLUSH"
+    ],
+    "answer": 0,
+    "explanation": "COMMITは、BEGINから始めた一連の変更をまとめて確定します。",
+    "difficulty": 3
+  },
+  {
+    "id": "database-create-index",
+    "category": "データベース",
+    "weight": 3,
+    "instruction": "participant_idで回答を頻繁に検索するため、answers.participant_idにインデックスを作ります。空欄を選んでください。",
+    "question": "CREATE ＿＿＿ idx_answers_participant_id\nON answers(participant_id);",
+    "choices": [
+      "KEY",
+      "INDEX",
+      "CACHE",
+      "SEARCH"
+    ],
+    "answer": 1,
+    "explanation": "CREATE INDEXで検索に使うインデックスを作成できます。",
+    "difficulty": 3,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "database-upsert",
+    "category": "データベース",
+    "weight": 3,
+    "instruction": "同じidがすでに存在する場合はINSERTを失敗させず、nameを更新します。空欄を選んでください。",
+    "question": "INSERT INTO users (id, name) VALUES ($1, $2)\nON CONFLICT (id) DO ＿＿＿\nSET name = EXCLUDED.name;",
+    "choices": [
+      "REPLACE",
+      "UPDATE",
+      "INSERT",
+      "MERGE ROW"
+    ],
+    "answer": 1,
+    "explanation": "PostgreSQLではON CONFLICT ... DO UPDATEを使ってUPSERTを実装できます。",
+    "difficulty": 3,
+    "answerTimeSeconds": 15
+  }
+]

@@ -1,362 +1,276 @@
 [
   {
-    "id": "frontend-html-heading",
+    "id": "frontend-flex-space-between",
     "category": "フロントエンド",
-    "weight": 1,
-    "instruction": "「EngiFar」をページで最も重要な見出しとして表示します。空欄に入るHTMLタグ名を選んでください。",
-    "question": "<＿＿＿>EngiFar</＿＿＿>",
-    "choices": [
-      "h1",
-      "p",
-      "span",
-      "div"
-    ],
+    "weight": 2,
+    "answerTimeSeconds": 15,
+    "instruction": "カードを横並びにして、余った幅を均等に空けます。空欄に入るdisplayの値を選んでください。",
+    "question": ".cards {\n  display: ＿＿＿;\n  justify-content: space-between;\n}",
+    "choices": ["flex", "inline", "table", "row"],
     "answer": 0,
-    "explanation": "h1は、ページの中心となる見出しを表すHTMLタグです。"
+    "explanation": "display: flexにすると子要素が横に並び、余白の配り方を指定できます。"
   },
   {
-    "id": "frontend-anchor-href",
+    "id": "frontend-prevent-default",
     "category": "フロントエンド",
-    "weight": 1,
-    "instruction": "「プロフィール」から /profile ページへ移動できるリンクを作ります。URLを指定する属性を選んでください。",
-    "question": "<a ＿＿＿=\"/profile\">プロフィール</a>",
-    "choices": [
-      "href",
-      "src",
-      "action",
-      "to"
-    ],
+    "weight": 2,
+    "answerTimeSeconds": 15,
+    "instruction": "フォーム送信でページが再読み込みされるのを止めます。空欄に入るメソッド名を選んでください。",
+    "question": "form.addEventListener(\"submit\", (event) => {\n  event.＿＿＿();\n});",
+    "choices": ["preventDefault", "stopPropagation", "cancel", "returnFalse"],
     "answer": 0,
-    "explanation": "aタグのhref属性に移動先のURLを指定します。"
+    "explanation": "preventDefault()は、フォーム送信などブラウザの既定の動作を止めます。"
   },
   {
-    "id": "frontend-css-color",
+    "id": "frontend-media-min-width",
     "category": "フロントエンド",
-    "weight": 1,
-    "instruction": "タイトルの文字色を緑色にします。CSSで文字色を指定するプロパティを選んでください。",
-    "question": ".title {\n  ＿＿＿: #c9f765;\n}",
-    "choices": [
-      "color",
-      "background-color",
-      "font-color",
-      "text-color"
-    ],
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "画面幅が768px以上のときだけ2列にします。空欄に入るメディア特性を選んでください。",
+    "question": "@media (＿＿＿: 768px) {\n  .grid { grid-template-columns: 1fr 1fr; }\n}",
+    "choices": ["min-width", "max-width", "width-from", "screen-min"],
     "answer": 0,
-    "explanation": "colorプロパティは文字の色を指定します。"
+    "explanation": "min-widthは「その幅以上のとき」に適用され、スマホを基準に書けます。"
   },
   {
-    "id": "frontend-click-event",
+    "id": "frontend-object-fit-cover",
     "category": "フロントエンド",
-    "weight": 1.2,
-    "instruction": "ボタンをクリックしたときにstart関数が動くようにします。空欄に入るイベント名を選んでください。",
-    "question": "button.addEventListener(\"＿＿＿\", start);",
-    "choices": [
-      "click",
-      "press",
-      "tap",
-      "onClick"
-    ],
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "サムネイル枠を縦横比を保ったまま埋め、はみ出した部分は切り取ります。空欄に入る値を選んでください。",
+    "question": ".thumb img {\n  object-fit: ＿＿＿;\n}",
+    "choices": ["cover", "contain", "fill", "none"],
     "answer": 0,
-    "explanation": "clickイベントは、ボタンなどがクリックされたときに発生します。"
+    "explanation": "coverは縦横比を保ったまま枠を埋め、はみ出した部分を切り取ります。"
   },
   {
-    "id": "backend-deno-serve",
+    "id": "backend-deno-env-get",
     "category": "バックエンド",
     "weight": 1,
-    "instruction": "DenoでWebサーバーを起動して「Hello」と返します。サーバーを開始するメソッド名を選んでください。",
-    "question": "Deno.＿＿＿(() => new Response(\"Hello\"));",
-    "choices": [
-      "serve",
-      "start",
-      "listenWeb",
-      "runServer"
-    ],
+    "answerTimeSeconds": 15,
+    "instruction": "環境変数DATABASE_URLの値をDenoで読み取ります。空欄に入るメソッド名を選んでください。",
+    "question": "const url = Deno.env.＿＿＿(\"DATABASE_URL\");",
+    "choices": ["get", "read", "value", "load"],
     "answer": 0,
-    "explanation": "Deno.serve()を使うと、HTTPリクエストを受け取るサーバーを起動できます。"
+    "explanation": "Deno.env.get()は、指定した名前の環境変数の値を取り出します。"
   },
   {
-    "id": "backend-await",
+    "id": "backend-finally",
     "category": "バックエンド",
-    "weight": 1,
-    "instruction": "非同期のfetchUser関数が完了するまで待ち、結果をuserへ入れます。空欄に入るキーワードを選んでください。",
-    "question": "const user = ＿＿＿ fetchUser();",
-    "choices": [
-      "await",
-      "wait",
-      "async",
-      "then"
-    ],
+    "weight": 2,
+    "answerTimeSeconds": 15,
+    "instruction": "エラーが起きても起きなくても、最後に必ず接続を閉じます。空欄に入るキーワードを選んでください。",
+    "question": "try {\n  await save(data);\n} catch (error) {\n  log(error);\n} ＿＿＿ {\n  await client.end();\n}",
+    "choices": ["finally", "always", "ensure", "cleanup"],
     "answer": 0,
-    "explanation": "awaitはPromiseの完了を待って、その結果を受け取ります。"
+    "explanation": "finallyの中は、例外の有無にかかわらず最後に必ず実行されます。"
   },
   {
-    "id": "backend-json-stringify",
+    "id": "backend-promise-all",
     "category": "バックエンド",
-    "weight": 1.1,
-    "instruction": "JavaScriptのオブジェクトをAPIで送れるJSON文字列へ変換します。使うメソッド名を選んでください。",
-    "question": "const body = JSON.＿＿＿({ ok: true });",
-    "choices": [
-      "stringify",
-      "parse",
-      "encode",
-      "toJSON"
-    ],
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "3つのAPI呼び出しを同時に走らせ、すべての完了を待ちます。空欄に入るメソッド名を選んでください。",
+    "question": "const [a, b, c] = await Promise.＿＿＿([fetchA(), fetchB(), fetchC()]);",
+    "choices": ["all", "race", "any", "join"],
     "answer": 0,
-    "explanation": "JSON.stringify()は、オブジェクトをJSON形式の文字列へ変換します。"
+    "explanation": "Promise.all()は複数の処理を並行に走らせ、すべて終わるまで待ちます。"
   },
   {
-    "id": "backend-read-text-file",
+    "id": "backend-abort-controller",
     "category": "バックエンド",
-    "weight": 1.2,
-    "instruction": "config.txtの内容を文字列として読み込みます。Denoのファイル読み込みメソッドを選んでください。",
-    "question": "const text = await Deno.＿＿＿(\"config.txt\");",
-    "choices": [
-      "readTextFile",
-      "readFileText",
-      "openText",
-      "load"
-    ],
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "外部APIの応答が3秒を超えたらfetchを打ち切ります。空欄に入るクラス名を選んでください。",
+    "question": "const controller = new ＿＿＿();\nsetTimeout(() => controller.abort(), 3000);\nawait fetch(url, { signal: controller.signal });",
+    "choices": ["AbortController", "TimeoutController", "CancelToken", "RequestTimer"],
     "answer": 0,
-    "explanation": "Deno.readTextFile()は、ファイルの内容を文字列として読み取ります。"
+    "explanation": "AbortControllerのsignalを渡すと、途中でfetchを打ち切れます。"
   },
   {
-    "id": "database-select",
+    "id": "database-inner-join",
     "category": "データベース",
-    "weight": 1,
-    "instruction": "usersテーブルにあるすべての列を取得します。空欄に入るSQLの命令を選んでください。",
-    "question": "＿＿＿ * FROM users;",
-    "choices": [
-      "SELECT",
-      "GET",
-      "READ",
-      "FIND"
-    ],
+    "weight": 2,
+    "answerTimeSeconds": 15,
+    "instruction": "usersとordersをuser_idでつなぎ、両方にそろっている行だけを取ります。空欄に入る結合を選んでください。",
+    "question": "SELECT u.name, o.total\nFROM users u\n＿＿＿ orders o ON o.user_id = u.id;",
+    "choices": ["INNER JOIN", "OUTER JOIN", "CROSS JOIN", "MERGE JOIN"],
     "answer": 0,
-    "explanation": "SELECTは、データベースからデータを取得するSQLの命令です。"
+    "explanation": "INNER JOINは、結合条件に一致した行だけを返します。"
   },
   {
-    "id": "database-where",
+    "id": "database-limit",
     "category": "データベース",
-    "weight": 1,
-    "instruction": "usersテーブルからidが3の行だけを取得します。条件を指定するキーワードを選んでください。",
-    "question": "SELECT * FROM users\n＿＿＿ id = 3;",
-    "choices": [
-      "WHERE",
-      "WHEN",
-      "IF",
-      "FILTER"
-    ],
+    "weight": 2,
+    "answerTimeSeconds": 15,
+    "instruction": "注文を新しい順に並べ、先頭の10件だけを取ります。空欄に入るキーワードを選んでください。",
+    "question": "SELECT * FROM orders\nORDER BY created_at DESC\n＿＿＿ 10;",
+    "choices": ["LIMIT", "TOP", "FIRST", "MAX"],
     "answer": 0,
-    "explanation": "WHEREを使うと、取得する行の条件を指定できます。"
+    "explanation": "LIMITは、返す行数の上限を指定します。"
   },
   {
-    "id": "database-insert",
+    "id": "database-unique",
     "category": "データベース",
-    "weight": 1.1,
-    "instruction": "usersテーブルへ名前がAoiのデータを1件追加します。空欄に入るSQLの命令を選んでください。",
-    "question": "＿＿＿ INTO users (name)\nVALUES (\"Aoi\");",
-    "choices": [
-      "INSERT",
-      "ADD",
-      "CREATE",
-      "PUSH"
-    ],
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "同じメールアドレスの行が2件登録されるのを防ぎます。列に付ける制約を選んでください。",
+    "question": "CREATE TABLE users (\n  id serial PRIMARY KEY,\n  email text ＿＿＿\n);",
+    "choices": ["UNIQUE", "DISTINCT", "SINGLE", "INDEX"],
     "answer": 0,
-    "explanation": "INSERT INTOは、テーブルへ新しい行を追加するSQLの命令です。"
+    "explanation": "UNIQUE制約は、その列に同じ値が重複して入るのを防ぎます。"
   },
   {
-    "id": "database-group-by",
+    "id": "database-commit",
     "category": "データベース",
-    "weight": 1.2,
-    "instruction": "ordersテーブルをuser_idごとにまとめ、ユーザー別の注文数を数えます。空欄を選んでください。",
-    "question": "SELECT user_id, COUNT(*)\nFROM orders\n＿＿＿ user_id;",
-    "choices": [
-      "GROUP BY",
-      "ORDER BY",
-      "COLLECT BY",
-      "PARTITION WITH"
-    ],
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "2つのUPDATEが両方成功したときだけ変更を確定させます。空欄に入る命令を選んでください。",
+    "question": "BEGIN;\nUPDATE accounts SET balance = balance - 100 WHERE id = 1;\nUPDATE accounts SET balance = balance + 100 WHERE id = 2;\n＿＿＿;",
+    "choices": ["COMMIT", "SAVE", "APPLY", "FLUSH"],
     "answer": 0,
-    "explanation": "GROUP BYは、同じuser_idの行をグループにまとめて集計します。"
+    "explanation": "COMMITは、BEGINから始めた一連の変更をまとめて確定します。"
   },
   {
-    "id": "api-get",
+    "id": "api-content-type",
     "category": "API",
-    "weight": 1,
-    "instruction": "APIからユーザー一覧を取得します。データ取得に使うHTTPメソッドを選んでください。",
-    "question": "fetch(\"/api/users\", {\n  method: \"＿＿＿\"\n});",
-    "choices": [
-      "GET",
-      "POST",
-      "PUT",
-      "DELETE"
-    ],
+    "weight": 2,
+    "answerTimeSeconds": 15,
+    "instruction": "JSONを送るPOSTリクエストに、本文の形式を伝えるヘッダーを付けます。空欄に入るヘッダー名を選んでください。",
+    "question": "fetch(\"/api/users\", {\n  method: \"POST\",\n  headers: { \"＿＿＿\": \"application/json\" },\n  body: JSON.stringify(user)\n});",
+    "choices": ["Content-Type", "Accept", "Content-Length", "Body-Type"],
     "answer": 0,
-    "explanation": "GETは、サーバーからデータを取得するときに使うHTTPメソッドです。"
+    "explanation": "Content-Typeは、送る本文の形式を相手に伝えるヘッダーです。"
   },
   {
-    "id": "api-post",
+    "id": "api-status-404",
     "category": "API",
-    "weight": 1,
-    "instruction": "APIへ新しいユーザー情報を送って登録します。新規作成に使うHTTPメソッドを選んでください。",
-    "question": "fetch(\"/api/users\", {\n  method: \"＿＿＿\",\n  body: JSON.stringify(user)\n});",
-    "choices": [
-      "POST",
-      "GET",
-      "HEAD",
-      "TRACE"
-    ],
+    "weight": 2,
+    "answerTimeSeconds": 15,
+    "instruction": "指定されたIDのユーザーが存在しなかったときに返すHTTPステータスを選んでください。",
+    "question": "return new Response(\"not found\", { status: ＿＿＿ });",
+    "choices": ["404", "400", "403", "500"],
     "answer": 0,
-    "explanation": "POSTは、サーバーへデータを送り、新しいデータを作るときに使います。"
+    "explanation": "404 Not Foundは、指定された資源が見つからないことを表します。"
   },
   {
-    "id": "api-status-200",
+    "id": "api-put",
     "category": "API",
-    "weight": 1,
-    "instruction": "APIの処理が正常に完了したことを表す、基本的なHTTPステータスを選んでください。",
-    "question": "HTTP/1.1 ＿＿＿ OK",
-    "choices": [
-      "200",
-      "404",
-      "500",
-      "301"
-    ],
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "id=7のユーザー情報を丸ごと置き換えます。何度送っても同じ結果になるHTTPメソッドを選んでください。",
+    "question": "fetch(\"/api/users/7\", {\n  method: \"＿＿＿\",\n  body: JSON.stringify(user)\n});",
+    "choices": ["PUT", "POST", "PATCH", "HEAD"],
     "answer": 0,
-    "explanation": "200 OKは、リクエストが正常に処理されたことを表します。"
+    "explanation": "PUTは指定したURLの内容を丸ごと置き換えるので、同じ内容を何度送っても結果が同じです。"
   },
   {
-    "id": "api-response-json",
+    "id": "api-cors-origin",
     "category": "API",
-    "weight": 1.2,
-    "instruction": "fetchで受け取ったレスポンス本文をJSONとして読み取ります。空欄に入るメソッド名を選んでください。",
-    "question": "const response = await fetch(\"/api/users\");\nconst data = await response.＿＿＿();",
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "別オリジンのフロントからこのAPIを呼べるようにします。サーバーが返すヘッダー名を選んでください。",
+    "question": "return new Response(body, {\n  headers: { \"＿＿＿\": \"https://engifar.example\" }\n});",
     "choices": [
-      "json",
-      "parseJSON",
-      "toObject",
-      "bodyJSON"
+      "Access-Control-Allow-Origin",
+      "Cross-Origin-Allow",
+      "Allow-Origin-Policy",
+      "CORS-Origin"
     ],
     "answer": 0,
-    "explanation": "Responseのjson()は、レスポンス本文をJSONとして読み取ります。"
+    "explanation": "Access-Control-Allow-Originは、どのオリジンからの呼び出しを許すかを伝えます。"
   },
   {
-    "id": "infra-git-status",
+    "id": "infra-dns-a-record",
     "category": "インフラ",
-    "weight": 1,
-    "instruction": "Gitで現在の変更状況を確認します。空欄に入るコマンドを選んでください。",
-    "question": "git ＿＿＿",
-    "choices": [
-      "status",
-      "check",
-      "state",
-      "show-all"
-    ],
+    "weight": 2,
+    "answerTimeSeconds": 15,
+    "instruction": "ドメイン名をIPv4アドレスへ対応づけます。空欄に入るDNSレコード種別を選んでください。",
+    "question": "engifar.example. IN ＿＿＿ 203.0.113.10",
+    "choices": ["A", "AAAA", "CNAME", "MX"],
     "answer": 0,
-    "explanation": "git statusは、変更されたファイルや現在のブランチ状態を表示します。"
+    "explanation": "Aレコードは、ドメイン名をIPv4アドレスへ対応づけます。"
   },
   {
-    "id": "infra-npm-install",
+    "id": "infra-docker-publish-port",
     "category": "インフラ",
-    "weight": 1,
-    "instruction": "package.jsonに書かれた依存パッケージをインストールします。空欄に入るnpmコマンドを選んでください。",
-    "question": "npm ＿＿＿",
-    "choices": [
-      "install",
-      "download",
-      "setup",
-      "packages"
-    ],
+    "weight": 2,
+    "answerTimeSeconds": 15,
+    "instruction": "コンテナの8000番ポートを、手元の3000番から開けるようにします。空欄に入るオプションを選んでください。",
+    "question": "docker run ＿＿＿ 3000:8000 engifar",
+    "choices": ["-p", "-e", "-v", "-i"],
     "answer": 0,
-    "explanation": "npm installは、package.jsonを読み、必要なパッケージをインストールします。"
+    "explanation": "-p ホスト側:コンテナ側 で、ポートの対応づけを指定します。"
   },
   {
-    "id": "infra-npm-run-dev",
+    "id": "infra-docker-copy-dependencies",
     "category": "インフラ",
-    "weight": 1.1,
-    "instruction": "package.jsonのscriptsに登録されたdevコマンドを実行します。空欄を選んでください。",
-    "question": "npm run ＿＿＿",
-    "choices": [
-      "dev",
-      "install",
-      "package",
-      "node"
-    ],
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "ソースを直すたびに依存のインストールをやり直さずに済むDockerfileにします。空欄で先にコピーするものを選んでください。",
+    "question": "COPY ＿＿＿ ./\nRUN npm ci\nCOPY . .",
+    "choices": ["package*.json", "src/", ".", "node_modules/"],
     "answer": 0,
-    "explanation": "npm run devは、scriptsに登録されたdevコマンドを実行します。"
+    "explanation": "依存の定義だけ先にコピーすると、ソースを変えてもnpm ciのキャッシュが効きます。"
   },
   {
-    "id": "infra-docker-detached",
+    "id": "infra-nginx-proxy-pass",
     "category": "インフラ",
-    "weight": 1.2,
-    "instruction": "Docker Composeのコンテナをバックグラウンドで起動します。空欄に入るオプションを選んでください。",
-    "question": "docker compose up ＿＿＿",
-    "choices": [
-      "-d",
-      "-b",
-      "--hide",
-      "--later"
-    ],
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "/apiへのリクエストをappコンテナの8000番ポートへ転送します。空欄に入るNginxの命令を選んでください。",
+    "question": "location /api/ {\n  ＿＿＿ http://app:8000;\n}",
+    "choices": ["proxy_pass", "root", "server_name", "listen"],
     "answer": 0,
-    "explanation": "-dを付けると、コンテナをバックグラウンドで起動できます。"
+    "explanation": "proxy_passは、受け取ったリクエストを指定した別のサーバーへ転送します。"
   },
   {
-    "id": "security-password-input",
+    "id": "security-https",
     "category": "セキュリティ",
     "weight": 1,
-    "instruction": "入力したパスワードの文字が画面上で隠れて表示される入力欄を作ります。typeの値を選んでください。",
-    "question": "<input type=\"＿＿＿\" name=\"password\">",
-    "choices": [
-      "password",
-      "secret",
-      "hidden-text",
-      "secure"
-    ],
+    "answerTimeSeconds": 15,
+    "instruction": "ログイン情報を通信途中で読み取られにくい形で送ります。空欄に入るスキームを選んでください。",
+    "question": "<form action=\"＿＿＿://example.com/login\" method=\"post\">",
+    "choices": ["https", "http", "ftp", "ws"],
     "answer": 0,
-    "explanation": "type=\"password\"にすると、入力文字が伏せて表示されます。"
+    "explanation": "httpsは通信経路を暗号化し、内容の盗み見や改ざんを防ぎます。"
   },
   {
-    "id": "security-text-content",
+    "id": "security-gitignore-env",
     "category": "セキュリティ",
     "weight": 1,
-    "instruction": "ユーザー入力をHTMLとして解釈せず、文字列のまま画面へ表示します。使うプロパティを選んでください。",
-    "question": "message.＿＿＿ = userInput;",
-    "choices": [
-      "textContent",
-      "innerHTML",
-      "outerHTML",
-      "htmlValue"
-    ],
+    "answerTimeSeconds": 15,
+    "instruction": "APIキーを書いた.envがコミットされないようにします。.gitignoreへ書き足す行を選んでください。",
+    "question": "# .gitignore\nnode_modules/\n＿＿＿",
+    "choices": [".env", ".env.example", "README.md", "src/"],
     "answer": 0,
-    "explanation": "textContentは内容を文字列として扱い、安心できる画面表示につながります。"
+    "explanation": ".gitignoreに.envを書くと、未追跡の.envがGitの追跡対象へ追加されるのを防げます。"
   },
   {
-    "id": "security-bcrypt-hash",
+    "id": "security-cookie-http-only",
     "category": "セキュリティ",
-    "weight": 1.1,
-    "instruction": "保存前のパスワードからbcryptのハッシュ値を作ります。空欄に入るメソッド名を選んでください。",
-    "question": "const hash = await bcrypt.＿＿＿(password, 10);",
-    "choices": [
-      "hash",
-      "encrypt",
-      "protect",
-      "secure"
-    ],
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "セッションCookieをJavaScriptから読めなくします。空欄に入る属性を選んでください。",
+    "question": "Set-Cookie: session=abc123; ＿＿＿; Secure",
+    "choices": ["HttpOnly", "NoScript", "Private", "ReadOnly"],
     "answer": 0,
-    "explanation": "bcrypt.hash()は、パスワードから保存用のハッシュ値を生成します。"
+    "explanation": "HttpOnlyを付けると、document.cookieから読み出せなくなります。"
   },
   {
-    "id": "security-sql-parameter",
+    "id": "security-generic-login-error",
     "category": "セキュリティ",
-    "weight": 1.2,
-    "instruction": "userIdをSQL文字列へ直接つなげず、パラメータとして渡します。空欄に入るプレースホルダーを選んでください。",
-    "question": "const result = await db.query(\n  \"SELECT * FROM users WHERE id = ＿＿＿\",\n  [userId]\n);",
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "ログインに失敗した理由を攻撃者に絞り込ませないようにします。返すメッセージを選んでください。",
+    "question": "return new Response(\"＿＿＿\", { status: 401 });",
     "choices": [
-      "$1",
-      "userId",
-      "input",
-      "raw"
+      "メールアドレスまたはパスワードが違います",
+      "パスワードが違います",
+      "このメールアドレスは未登録です",
+      "アカウントが凍結されています"
     ],
     "answer": 0,
-    "explanation": "$1と値の配列を使うと、入力値をパラメータとして安全に渡せます。"
+    "explanation": "どちらが誤りかを伏せると、登録済みのアカウントを探られにくくなります。"
   }
 ]

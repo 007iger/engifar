@@ -28,6 +28,22 @@ const migrations: Migration[] = [
     version: "003_quiz_choice_order_version",
     url: new URL("../../migrations/003_quiz_choice_order_version.sql", import.meta.url),
   },
+  {
+    version: "004_result_publication",
+    url: new URL("../../migrations/004_result_publication.sql", import.meta.url),
+  },
+  {
+    version: "005_quiz_timing",
+    url: new URL("../../migrations/005_quiz_timing.sql", import.meta.url),
+  },
+  {
+    version: "006_quiz_question_set_version",
+    url: new URL("../../migrations/006_quiz_question_set_version.sql", import.meta.url),
+  },
+  {
+    version: "007_quiz_question_bank",
+    url: new URL("../../migrations/007_quiz_question_bank.sql", import.meta.url),
+  },
 ];
 
 async function checksum(sql: string): Promise<string> {
