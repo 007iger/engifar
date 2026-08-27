@@ -2494,6 +2494,17 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
   if (page === "home") initHome();
   else if (page === "room") initRoom();
   else if (page === "quiz") void initQuiz();
-  else if (["rocket", "result", "card"].includes(page)) void initAuthoritativeResultPage();
+  else if (["rocket", "result", "card"].includes(page)) {
+    // quiz.htmlは自前でquizConfigを取得済みだが、rocket/result/cardは直接開かれることもあるため、
+    // requireMetrics()の判定(questionCountの比較)が既定値(24)のままにならないようここで取得する。
+    void (async () => {
+      try {
+        quizConfig = Object.freeze(await requestApi("/api/quiz/config"));
+      } catch {
+        // 取得に失敗しても既定値のまま続行し、requireMetrics側のフォールバックに委ねる。
+      }
+      await initAuthoritativeResultPage();
+    })();
+  }
   if (page === "home" || page === "room") initGuide();
 })();
