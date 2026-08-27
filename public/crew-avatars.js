@@ -200,17 +200,7 @@ function addPlayfulDetails(avatar) {
   const sweat = document.createElement("span");
   sweat.className = "room-field-avatar-sweat";
   sweat.setAttribute("aria-hidden", "true");
-
-  const limbs = document.createElement("span");
-  limbs.className = "room-field-avatar-limbs";
-  limbs.setAttribute("aria-hidden", "true");
-  ["arm-left", "arm-right", "leg-left", "leg-right"].forEach((part) => {
-    const limb = document.createElement("i");
-    limb.className = `room-field-avatar-limb room-field-avatar-limb--${part}`;
-    limbs.append(limb);
-  });
-
-  avatar.append(sweat, limbs);
+  avatar.append(sweat);
 }
 
 export function renderRoomAvatarField(field, participants) {
