@@ -684,10 +684,20 @@ export function createApp(
     }
 
     if (pathname.startsWith("/assets/")) {
+      const assetResponse = await serveDir(request, {
+        fsRoot: assetRoot,
+        urlRoot: "assets",
+        showDirListing: false,
+        quiet: true,
+      });
+      if (assetResponse.status !== 404) return secureStaticResponse(assetResponse);
+
+      // Some deploy targets keep browser assets under public/assets instead.
+      await assetResponse.body?.cancel();
       return secureStaticResponse(
         await serveDir(request, {
-          fsRoot: assetRoot,
-          urlRoot: "assets",
+          fsRoot: staticRoot,
+          urlRoot: "",
           showDirListing: false,
           quiet: true,
         }),

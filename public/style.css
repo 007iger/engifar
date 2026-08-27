@@ -165,19 +165,15 @@ a {
 }
 
 .brand-mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 34px;
   height: 34px;
   flex: 0 0 auto;
   border: 1px solid rgba(98, 228, 236, .46);
   border-radius: 10px;
-  color: #08121f;
   background: linear-gradient(135deg, var(--cyan), var(--orange-bright));
   box-shadow: 0 0 22px rgba(98, 228, 236, .16);
-  font-family: "Arial Black", "Segoe UI", sans-serif;
-  font-size: 18px;
-  font-weight: 900;
+  object-fit: cover;
 }
 
 .brand > span:last-child {
