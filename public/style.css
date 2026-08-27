@@ -3123,22 +3123,12 @@ a {
   left: 50%; bottom: 10%;
   width: clamp(80px, 10vw, 176px);
   height: clamp(170px, 21vw, 368px);
-  border-radius: 48% 48% 27% 27%;
-  background: linear-gradient(90deg, #c5d0d5, #fff 48%, #a3b1ba);
-  box-shadow: 0 18px 35px rgba(0,0,0,.34);
+  filter: drop-shadow(0 18px 22px rgba(0,0,0,.34));
   transform: translateX(-50%);
   animation: home-rocket-idle 3s ease-in-out infinite;
 }
-.home-rocket-tip { position: absolute; inset: 0 0 auto; height: 30%; border-radius: 50% 50% 0 0; background: linear-gradient(90deg,#d7dfe2,#fff 50%,#b8c4ca); clip-path: polygon(50% 0,100% 100%,0 100%); transform: translateY(-42%); }
-.home-rocket-window { position: absolute; left: 50%; top: 22%; width: 40%; aspect-ratio: 1; border: 6px solid #26384a; border-radius: 50%; background: radial-gradient(circle at 35% 30%,#dcffff,#2fa7bf 70%); transform: translateX(-50%); }
-.home-rocket-band { position: absolute; left: 0; width: 100%; height: 5%; }
-.home-rocket-band--orange { top: 55%; background: var(--orange); }
-.home-rocket-band--cyan { top: 64%; height: 3%; background: var(--cyan); }
-.home-rocket-fin { position: absolute; bottom: 4%; width: 45%; height: 27%; background: var(--cyan-deep); }
-.home-rocket-fin--left { right: 85%; clip-path: polygon(100% 0,100% 100%,0 100%); }
-.home-rocket-fin--right { left: 85%; clip-path: polygon(0 0,100% 100%,0 100%); }
-.home-rocket-engine { position: absolute; left: 25%; right: 25%; bottom: -8%; height: 14%; border-radius: 0 0 10px 10px; background: #29394a; }
-.home-rocket-flame { position: absolute; z-index: -1; left: 32%; right: 32%; top: 98%; height: 36%; border-radius: 15% 15% 50% 50%; background: linear-gradient(#fff48a,#ffad3e 48%,#ff593c); filter: drop-shadow(0 0 14px rgba(255,140,65,.7)); animation: flame-flicker .28s ease-in-out infinite alternate; }
+.home-rocket-svg { display: block; width: 100%; height: 100%; }
+.home-rocket-flame { transform-box: fill-box; transform-origin: 50% 0%; filter: drop-shadow(0 0 14px rgba(255,140,65,.7)); animation: flame-flicker .28s ease-in-out infinite alternate; }
 @keyframes home-rocket-idle { 50% { translate: 0 -7px; } }
 
 .home-control {
