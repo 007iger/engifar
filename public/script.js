@@ -14,6 +14,7 @@ import {
   decorateCrewAvatars,
   renderRoomAvatarField,
 } from "./crew-avatars.js";
+import { boardRocket } from "./rocket-boarding.js";
 import { createQuizCrewReaction } from "./quiz-crew-reaction.js";
 import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
 
@@ -1696,7 +1697,8 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     const elements = {
       setup: document.querySelector("#screenSetup"), launch: document.querySelector("#screenLaunch"), result: document.querySelector("#screenResult"),
       launchButton: document.querySelector("#launchBtn"), bots: document.querySelector("#botsRunway"), rocket: document.querySelector("#rocketWrap"),
-      hatch: document.querySelector("#rlHatch"), sky: document.querySelector("#rlSky"), ground: document.querySelector("#rlGroundLine"),
+      hatch: document.querySelector("#rlHatch"), topHatchLid: document.querySelector("#rlTopHatchLid"),
+      rocketSvg: document.querySelector("#rocketSvg"), sky: document.querySelector("#rlSky"), ground: document.querySelector("#rlGroundLine"),
       approach: document.querySelector("#approachBody"), countdown: document.querySelector("#rlCountdown"), caption: document.querySelector("#flightCaption"),
       resultBg: document.querySelector("#resultBg"), resultTitle: document.querySelector("#resultTitle"), resultIllustration: document.querySelector("#resultIllustration"),
       impactAltitude: document.querySelector("#impactAltitude"), distanceLabel: document.querySelector("#rocket-distance-label"),
@@ -1707,8 +1709,6 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     const score = flightScoreFor(outcome);
     const rank = getFlightRank(score);
     const resultContent = globalThis.ROCKET_LAUNCH_RESULTS || {};
-    const botColors = ["oklch(0.62 0.20 24)", "oklch(0.62 0.17 253)", "oklch(0.83 0.16 93)", state.player.color];
-    const botSpots = [{ left: "28%", top: "78%" }, { left: "38%", top: "84%" }, { left: "60%", top: "84%" }, { left: "71%", top: "77%" }];
     const captions = { ground: "発射準備", sky: "上空へ", "atmosphere-edge": "大気圏付近", space: "宇宙空間", sea: "着水" };
     let running = false;
 
@@ -1720,17 +1720,29 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     });
     const setSkyLeg = (leg) => elements.sky.querySelectorAll(".rl-sky-layer").forEach((layer) => layer.classList.toggle("is-visible", layer.dataset.leg === leg));
     const setCaption = (text) => { elements.caption.textContent = text; elements.caption.classList.toggle("is-visible", Boolean(text)); };
-    const robotSvg = (color) => `<svg class="bot-svg" viewBox="0 0 100 130" role="img" aria-hidden="true"><ellipse cx="50" cy="118" rx="24" ry="7" fill="${color}" opacity="0.3"/><line x1="50" y1="10" x2="50" y2="24" stroke="${color}" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="8" r="6" fill="oklch(0.85 0.1 202)"/><rect x="20" y="22" width="60" height="76" rx="30" fill="${color}" stroke="oklch(0.2 0.02 260 / 0.25)" stroke-width="2"/><rect x="32" y="42" width="36" height="26" rx="12" fill="oklch(0.97 0.006 260)"/><circle cx="43" cy="55" r="4" fill="oklch(0.22 0.03 262)"/><circle cx="57" cy="55" r="4" fill="oklch(0.22 0.03 262)"/></svg>`;
 
-    async function boardBots() {
-      elements.bots.innerHTML = "";
-      const bots = botSpots.map((spot, index) => {
-        const bot = document.createElement("div");
-        bot.className = "rl-runway-bot"; bot.style.left = spot.left; bot.style.top = spot.top; bot.innerHTML = robotSvg(botColors[index]); elements.bots.append(bot); return bot;
+    function boardingParticipants() {
+      const roster = authoritativeResults?.participants;
+      if (Array.isArray(roster) && roster.length > 0) {
+        return roster.map((participant) => ({
+          id: participant.participantId,
+          name: participant.displayName,
+          color: /^#[0-9a-f]{6}$/i.test(participant.crewColor || "") ? participant.crewColor : "#54d37c",
+          isYou: Boolean(participant.isRequester),
+        }));
+      }
+      return [{ id: "solo", name: state.player.name, color: state.player.color, isYou: true }];
+    }
+
+    async function boardCrew() {
+      await boardRocket({
+        container: elements.bots,
+        rocketSvg: elements.rocketSvg,
+        doorEl: elements.hatch,
+        topHatchLid: elements.topHatchLid,
+        groundEl: elements.ground,
+        participants: boardingParticipants(),
       });
-      await wait(120);
-      for (const bot of bots) { bot.style.left = "50%"; bot.style.top = "57%"; await wait(160); bot.classList.add("is-boarding"); }
-      await wait(300); elements.hatch.classList.add("is-open"); await wait(150); elements.hatch.classList.remove("is-open"); elements.bots.innerHTML = "";
     }
     async function bounceRocket() { elements.rocket.classList.add("is-bouncing"); await wait(700); elements.rocket.classList.remove("is-bouncing"); }
     async function igniteRocket() {
@@ -1770,7 +1782,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     }
     async function runLaunchSequence() {
       if (running) return; running = true; showScreen(elements.launch); setSkyLeg("ground"); elements.ground.classList.remove("is-hidden"); elements.rocket.className = "rl-rocket-wrap"; elements.approach.classList.remove("is-visible"); setCaption("");
-      await boardBots(); await bounceRocket(); await igniteRocket(); await liftoffRocket(); await flyThrough(); showResult(); running = false;
+      await boardCrew(); await bounceRocket(); await igniteRocket(); await liftoffRocket(); await flyThrough(); showResult(); running = false;
     }
     if (state.outcome) showResult();
     else elements.launchButton.addEventListener("click", runLaunchSequence);
