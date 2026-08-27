@@ -86,7 +86,9 @@ const TRANSIENT_CLASS_FALLBACK_MS = {
 };
 
 function resolveOverlap(avatar, field) {
-  const others = Array.from(field.querySelectorAll(".room-field-avatar")).filter((el) => el !== avatar);
+  const others = Array.from(field.querySelectorAll(".room-field-avatar")).filter((el) =>
+    el !== avatar
+  );
   if (!others.length) return false;
   const bounds = field.getBoundingClientRect();
   const width = Math.max(1, bounds.width);
@@ -146,7 +148,10 @@ function playTransientClass(avatar, className, onDone) {
     settle();
   };
   avatar.addEventListener("animationend", onEnd);
-  const fallbackTimer = globalThis.setTimeout(settle, TRANSIENT_CLASS_FALLBACK_MS[className] ?? 700);
+  const fallbackTimer = globalThis.setTimeout(
+    settle,
+    TRANSIENT_CLASS_FALLBACK_MS[className] ?? 700,
+  );
 }
 
 function enableAvatarInteraction(avatar, field) {
