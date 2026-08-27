@@ -79,6 +79,11 @@ function slotsFor(count) {
 const REACTION_CLASSES = ["is-reacting-shy", "is-reacting-spin"];
 const OVERLAP_MIN_DIST = 58;
 const OVERLAP_KICK = 1.15;
+const TRANSIENT_CLASS_FALLBACK_MS = {
+  "is-reacting-shy": 580 + 150,
+  "is-reacting-spin": 620 + 150,
+  "is-bounce": 320 + 150,
+};
 
 function resolveOverlap(avatar, field) {
   const others = Array.from(field.querySelectorAll(".room-field-avatar")).filter((el) => el !== avatar);
@@ -125,14 +130,23 @@ function playTransientClass(avatar, className, onDone) {
   avatar.classList.remove(...REACTION_CLASSES, "is-bounce");
   void avatar.offsetWidth;
   avatar.classList.add(className);
-  const onEnd = (event) => {
-    if (event.target !== avatar) return;
+
+  let settled = false;
+  const settle = () => {
+    if (settled) return;
+    settled = true;
     avatar.classList.remove(className);
     avatar.dataset.busy = "false";
     avatar.removeEventListener("animationend", onEnd);
+    globalThis.clearTimeout(fallbackTimer);
     if (onDone) onDone();
   };
+  const onEnd = (event) => {
+    if (event.target !== avatar) return;
+    settle();
+  };
   avatar.addEventListener("animationend", onEnd);
+  const fallbackTimer = globalThis.setTimeout(settle, TRANSIENT_CLASS_FALLBACK_MS[className] ?? 700);
 }
 
 function enableAvatarInteraction(avatar, field) {
