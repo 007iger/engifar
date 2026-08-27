@@ -170,6 +170,11 @@ export interface GameRepository {
     accessToken: string,
     reviewTimeSeconds?: number,
   ): Promise<GameSessionSummary>;
+  /** 短寿命の署名済みセッション認証後に、参加者JOINなしで進行状態だけを取得する。 */
+  getSessionSnapshot(
+    sessionId: string,
+    reviewTimeSeconds?: number,
+  ): Promise<GameSessionSummary>;
   /** 参加者用にセッション開始時に抽選・固定した全問題を一括取得する。 */
   getParticipantQuestionPlan(
     sessionId: string,

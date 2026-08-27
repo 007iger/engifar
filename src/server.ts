@@ -1,6 +1,7 @@
 import { createApp } from "./app.ts";
 import { applyMigrations } from "./db/migrate.ts";
 import { createPool } from "./db/pool.ts";
+import { databaseMetricsSnapshot, startDatabaseMetricsLogger } from "./db/metrics.ts";
 import { PostgresGameRepository } from "./db/postgres_game_repository.ts";
 import { seedQuizQuestions } from "./db/seed_quiz_questions.ts";
 import { createQuizService } from "./quiz.ts";
@@ -25,7 +26,11 @@ export async function startServer(): Promise<Deno.HttpServer> {
     startBroadcastChannel();
     startHeartbeatMonitor(repository);
     startRoomCleanupMonitor(repository);
-    return Deno.serve(createApp(repository, { quizService }));
+    startDatabaseMetricsLogger(pool);
+    return Deno.serve(createApp(repository, {
+      quizService,
+      databaseMetrics: () => databaseMetricsSnapshot(pool),
+    }));
   } catch (error) {
     await pool.end();
     throw error;

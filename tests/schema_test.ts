@@ -90,3 +90,15 @@ Deno.test("question metadata and crew colors are persisted and snapshotted", asy
   assert.match(migration, /ADD COLUMN crew_color_snapshot varchar\(7\) NOT NULL/);
   assert.match(migration, /crew_color ~ '\^#\[0-9a-f\]\{6\}\$'/);
 });
+
+Deno.test("question revisions keep past session grading immutable", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/009_quiz_question_revisions.sql", import.meta.url),
+  );
+
+  assert.match(migration, /CREATE TABLE quiz_question_revision/);
+  assert.match(migration, /UNIQUE \(question_id, content_hash\)/);
+  assert.match(migration, /CREATE TRIGGER quiz_question_revision_content_immutable/);
+  assert.match(migration, /ADD COLUMN question_revision_id uuid/);
+  assert.match(migration, /FOREIGN KEY \(question_revision_id, question_id\)/);
+});

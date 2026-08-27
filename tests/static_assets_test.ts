@@ -63,6 +63,7 @@ Deno.test("room controls call the shared room and session APIs", async () => {
   assert.match(source, /crewColor: fresh\.player\.color/);
   assert.match(source, /participant\.crewColor/);
   assert.match(source, /elements\.technology\.textContent = question\.technology/);
+  assert.match(source, /sessionAuthToken/);
   assert.match(quizHtml, /id="question-technology"/);
   assert.doesNotMatch(source, /searchParams\.set\("token"/);
 });

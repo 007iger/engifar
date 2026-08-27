@@ -26,6 +26,8 @@ erDiagram
     SESSION_PARTICIPANT ||--o{ ANSWER : "回答する"
     SESSION_PARTICIPANT ||--o{ SESSION_PARTICIPANT_QUESTION : "抽選問題を持つ"
     QUIZ_QUESTION ||--o{ SESSION_PARTICIPANT_QUESTION : "抽選される"
+    QUIZ_QUESTION ||--o{ QUIZ_QUESTION_REVISION : "変更履歴を持つ"
+    QUIZ_QUESTION_REVISION ||--o{ SESSION_PARTICIPANT_QUESTION : "出題時の版を固定する"
 
     ROOM {
         uuid id PK
@@ -104,11 +106,30 @@ erDiagram
         timestamptz updated_at
     }
 
+    QUIZ_QUESTION_REVISION {
+        uuid id PK
+        varchar question_id FK
+        char content_hash
+        varchar category
+        varchar technology
+        smallint difficulty
+        smallint weight
+        smallint answer_time_seconds
+        text instruction
+        text question
+        text_array choices
+        smallint correct_option
+        text explanation
+        boolean active
+        timestamptz created_at
+    }
+
     SESSION_PARTICIPANT_QUESTION {
         uuid game_session_id PK,FK
         uuid participant_id PK,FK
         smallint question_index PK
         varchar question_id FK
+        uuid question_revision_id FK
     }
 ```
 

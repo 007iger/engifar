@@ -76,6 +76,9 @@ class FakeRepository implements GameRepository {
   getSessionForParticipant(): Promise<GameSessionSummary> {
     return Promise.reject(new Error("not used"));
   }
+  getSessionSnapshot(): Promise<GameSessionSummary> {
+    return Promise.reject(new Error("not used"));
+  }
   getSessionResultSource(): Promise<SessionResultSource> {
     return Promise.reject(new Error("not used"));
   }

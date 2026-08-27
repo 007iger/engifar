@@ -898,6 +898,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
   async function initMultiplayerQuiz(elements, auth) {
     const sessionId = state.room.sessionId;
     let currentSession = null;
+    let sessionAuthToken = null;
     let currentRenderedIndex = null;
     let currentQuestionToken = null;
     let reviewingIndex = null;
@@ -997,6 +998,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
             headers: bearerHeaders(auth),
             body: JSON.stringify({
               questionToken,
+              sessionAuthToken,
               selectedOption: Number.isInteger(state.quiz.answers[index])
                 ? state.quiz.answers[index]
                 : null
@@ -1009,6 +1011,8 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           await new Promise((resolve) => globalThis.setTimeout(resolve, retryDelays[attempt]));
         }
       }
+
+      sessionAuthToken = result.sessionAuthToken || sessionAuthToken;
 
       const selectedChoice = Number.isInteger(state.quiz.answers[index])
         ? state.quiz.answers[index]
@@ -1055,9 +1059,13 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           {
             method: "POST",
             headers: bearerHeaders(auth),
-            body: JSON.stringify({ progressToken: state.quiz.progressToken })
+            body: JSON.stringify({
+              progressToken: state.quiz.progressToken,
+              sessionAuthToken
+            })
           }
         );
+        sessionAuthToken = start.sessionAuthToken || sessionAuthToken;
         await gradeQuestion(index, start.questionToken, false);
       }
     }
@@ -1130,10 +1138,15 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           {
             method: "POST",
             headers: bearerHeaders(auth),
-            body: JSON.stringify({ progressToken: state.quiz.progressToken })
+            body: JSON.stringify({
+              progressToken: state.quiz.progressToken,
+              sessionAuthToken
+            })
           }
         );
         if (token !== phaseToken) return;
+
+        sessionAuthToken = start.sessionAuthToken || sessionAuthToken;
 
         const question = start.question;
         const selectedChoice = Number.isInteger(state.quiz.answers[index])
@@ -1257,6 +1270,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
             const session = await requestApi(`/api/sessions/${encodeURIComponent(sessionId)}`, {
               headers: bearerHeaders(auth)
             });
+            sessionAuthToken = session.sessionAuthToken || sessionAuthToken;
             currentSession = session;
             if (session.questionCount !== quizConfig.questionCount) {
               throw new Error("ルームとクイズの問題数が一致していません。ルームを作り直してください。");

@@ -7,6 +7,7 @@ const DEFAULT_ANSWER_TIME_SECONDS = 15;
 const DEFAULT_REVIEW_TIME_SECONDS = 5;
 const QUESTIONS_PER_ATTEMPT = 24;
 const TOKEN_LIFETIME_MS = 60 * 60 * 1000;
+const SESSION_AUTH_TOKEN_LIFETIME_MS = 60_000;
 export const LEGACY_CHOICE_ORDER_VARIANT = "legacy-v1";
 export const LEGACY_QUESTION_SET_VERSION = 1;
 export const CURRENT_QUESTION_SET_VERSION = 2;
@@ -75,8 +76,8 @@ export function safetyFromCategoryScores(values: readonly number[]): number {
   return Math.round(Math.min(100, Math.max(0, mean - 0.5 * Math.sqrt(variance))));
 }
 
-interface TokenPayload {
-  type: "progress" | "question";
+interface QuestionFlowTokenPayload<Type extends "progress" | "question"> {
+  type: Type;
   attemptId: string;
   questionIndex: number;
   expiresAt: number;
@@ -85,6 +86,18 @@ interface TokenPayload {
   questionSetVersion?: number;
   questionId?: string;
 }
+
+interface SessionAuthTokenPayload {
+  type: "session";
+  sessionId: string;
+  accessTokenHash: string;
+  expiresAt: number;
+}
+
+type TokenPayload =
+  | QuestionFlowTokenPayload<"progress">
+  | QuestionFlowTokenPayload<"question">
+  | SessionAuthTokenPayload;
 
 export interface QuizServiceOptions {
   secret?: string;
@@ -238,6 +251,13 @@ function randomSecret(): string {
 function isTokenPayload(value: unknown): value is TokenPayload {
   if (!value || typeof value !== "object") return false;
   const payload = value as Record<string, unknown>;
+  if (payload.type === "session") {
+    return typeof payload.sessionId === "string" && payload.sessionId.length > 0 &&
+      payload.sessionId.length <= 64 &&
+      typeof payload.accessTokenHash === "string" &&
+      /^[0-9a-f]{64}$/.test(payload.accessTokenHash) &&
+      typeof payload.expiresAt === "number" && Number.isFinite(payload.expiresAt);
+  }
   return (payload.type === "progress" || payload.type === "question") &&
     typeof payload.attemptId === "string" &&
     Number.isSafeInteger(payload.questionIndex) &&
@@ -291,6 +311,30 @@ export class QuizService {
   answerTimeSecondsAt(index: number): number {
     questionAt(index);
     return this.config.answerTimeSecondsByQuestion[index];
+  }
+
+  async createSessionAuthToken(sessionId: string, accessToken: string): Promise<string> {
+    return await this.#sign({
+      type: "session",
+      sessionId,
+      accessTokenHash: await this.#accessTokenHash(accessToken),
+      expiresAt: this.#now() + SESSION_AUTH_TOKEN_LIFETIME_MS,
+    });
+  }
+
+  async isSessionAuthTokenValid(
+    token: string | null,
+    sessionId: string,
+    accessToken: string,
+  ): Promise<boolean> {
+    if (!token) return false;
+    try {
+      const payload = await this.#verify(token, "session");
+      return payload.sessionId === sessionId &&
+        payload.accessTokenHash === await this.#accessTokenHash(accessToken);
+    } catch {
+      return false;
+    }
   }
 
   async createAttempt(): Promise<{ progressToken: string }> {
@@ -540,7 +584,17 @@ export class QuizService {
     return `${encodedPayload}.${encodeBase64Url(new Uint8Array(signature))}`;
   }
 
-  async #verify(token: string, expectedType: TokenPayload["type"]): Promise<TokenPayload> {
+  async #accessTokenHash(accessToken: string): Promise<string> {
+    const digest = await crypto.subtle.digest("SHA-256", encoder.encode(accessToken));
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(
+      "",
+    );
+  }
+
+  async #verify<Type extends TokenPayload["type"]>(
+    token: string,
+    expectedType: Type,
+  ): Promise<Extract<TokenPayload, { type: Type }>> {
     try {
       const [encodedPayload, encodedSignature, extra] = token.split(".");
       if (!encodedPayload || !encodedSignature || extra !== undefined) throw new Error("format");
@@ -557,7 +611,7 @@ export class QuizService {
       if (this.#now() > payload.expiresAt) {
         throw new ApiError(401, "QUIZ_TOKEN_EXPIRED", "Quiz token has expired");
       }
-      return payload;
+      return payload as Extract<TokenPayload, { type: Type }>;
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw new ApiError(401, "INVALID_QUIZ_TOKEN", "Quiz token is invalid");

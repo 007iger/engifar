@@ -84,6 +84,8 @@ class FakeRepository implements GameRepository {
   }
 
   questionPlanReadCount = 0;
+  sessionAuthenticationReadCount = 0;
+  sessionSnapshotReadCount = 0;
 
   createRoom(displayName: string, crewColor: string): Promise<MembershipResult> {
     this.createdDisplayName = displayName;
@@ -141,9 +143,15 @@ class FakeRepository implements GameRepository {
     _sessionId: string,
     accessToken: string,
   ): Promise<GameSessionSummary> {
+    this.sessionAuthenticationReadCount += 1;
     if (accessToken !== TOKEN) {
       throw new ApiError(403, "PARTICIPANT_REQUIRED", "A valid participant token is required");
     }
+    return Promise.resolve(this.sessionForParticipant);
+  }
+
+  getSessionSnapshot(): Promise<GameSessionSummary> {
+    this.sessionSnapshotReadCount += 1;
     return Promise.resolve(this.sessionForParticipant);
   }
 
@@ -286,6 +294,44 @@ Deno.test("GET /api/health reports a healthy database", async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { status: "ok", database: "up" });
+});
+
+Deno.test("GET /api/health exposes database and question-plan metrics when configured", async () => {
+  const response = await createApp(new FakeRepository(), {
+    databaseMetrics: () => ({
+      queries: {
+        total: 12,
+        failed: 1,
+        inFlight: 0,
+        totalDurationMs: 45.5,
+        maxDurationMs: 8.2,
+        byOperation: {
+          select: 8,
+          insert: 1,
+          update: 1,
+          delete: 0,
+          transaction: 2,
+          other: 0,
+        },
+      },
+      pool: { totalConnections: 2, idleConnections: 1, waitingRequests: 0 },
+    }),
+  })(new Request("http://localhost/api/health"));
+
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.metrics.database.queries.total, 12);
+  assert.deepEqual(payload.metrics.questionPlanCache, {
+    hits: 0,
+    misses: 0,
+    entries: 0,
+    hitRate: 0,
+  });
+  assert.deepEqual(payload.metrics.sessionAuth, {
+    signedTokenHits: 0,
+    databaseFallbacks: 0,
+    hitRate: 0,
+  });
 });
 
 Deno.test("POST /api/rooms trims the display name", async () => {
@@ -741,11 +787,17 @@ Deno.test("version 4 room quiz serves the participant's DB-selected question", a
   const gradeResponse = await app(jsonRequest(
     `/api/sessions/${SESSION_ID}/quiz/questions/0/grade`,
     "POST",
-    { questionToken: started.questionToken, selectedOption: 0 },
+    {
+      questionToken: started.questionToken,
+      sessionAuthToken: started.sessionAuthToken,
+      selectedOption: 0,
+    },
     TOKEN,
   ));
   assert.equal(gradeResponse.status, 200);
   assert.equal(repository.questionPlanReadCount, 1);
+  assert.equal(repository.sessionAuthenticationReadCount, 1);
+  assert.equal(repository.sessionSnapshotReadCount, 1);
 });
 
 Deno.test("answer option must be one of four zero-based indexes", async () => {

@@ -468,7 +468,8 @@ export class PostgresGameRepository implements GameRepository {
              ('API', 4), ('インフラ', 5), ('セキュリティ', 6)
          ), ranked AS (
            SELECT sp.game_session_id, sp.participant_id, category.category_order,
-             question.id AS question_id, question.difficulty,
+             question.id AS question_id, revision.id AS question_revision_id,
+             question.difficulty,
              row_number() OVER (
                PARTITION BY sp.participant_id, question.category, question.difficulty
                ORDER BY random()
@@ -478,6 +479,9 @@ export class PostgresGameRepository implements GameRepository {
            JOIN quiz_question question
              ON question.category = category.category
             AND question.active
+           JOIN quiz_question_revision revision
+             ON revision.question_id = question.id
+            AND revision.active
            WHERE sp.game_session_id = $1
          ), selected AS (
            SELECT *, (row_number() OVER (
@@ -488,9 +492,9 @@ export class PostgresGameRepository implements GameRepository {
            WHERE difficulty_rank <= CASE difficulty WHEN 1 THEN 1 WHEN 2 THEN 2 ELSE 1 END
          )
          INSERT INTO session_participant_question (
-           game_session_id, participant_id, question_index, question_id
+           game_session_id, participant_id, question_index, question_id, question_revision_id
          )
-         SELECT game_session_id, participant_id, question_index, question_id
+         SELECT game_session_id, participant_id, question_index, question_id, question_revision_id
          FROM selected
          RETURNING question_id`,
         [session.id],
@@ -552,12 +556,14 @@ export class PostgresGameRepository implements GameRepository {
     const tokenHash = await hashAccessToken(accessToken);
     const result = await this.pool.query<ParticipantQuestionRow>(
       `SELECT selection.participant_id, selection.question_index,
-         question.id, question.category, question.technology, question.weight,
-         question.answer_time_seconds, question.instruction, question.question,
-         question.choices, question.correct_option, question.explanation
+         selection.question_id AS id, revision.category, revision.technology, revision.weight,
+         revision.answer_time_seconds, revision.instruction, revision.question,
+         revision.choices, revision.correct_option, revision.explanation
        FROM session_participant_question selection
        JOIN participant participant ON participant.id = selection.participant_id
-       JOIN quiz_question question ON question.id = selection.question_id
+       JOIN quiz_question_revision revision
+         ON revision.id = selection.question_revision_id
+        AND revision.question_id = selection.question_id
        WHERE selection.game_session_id = $1
          AND participant.access_token_hash = $2
          AND participant.left_at IS NULL
@@ -576,6 +582,29 @@ export class PostgresGameRepository implements GameRepository {
       throw new ApiError(500, "QUIZ_CONFIG_MISMATCH", "Stored quiz question plan is invalid");
     }
     return { participantId, questions: result.rows.map(mapQuestion) };
+  }
+
+  async getSessionSnapshot(
+    sessionId: string,
+    reviewTimeSeconds = 5,
+  ): Promise<GameSessionSummary> {
+    const result = await this.pool.query<SessionRow>(
+      `SELECT id, room_id, session_number, status, question_count, choice_order_version,
+         answer_time_seconds, question_answer_time_seconds, current_question_index,
+         question_started_at, question_review_started_at, review_ends_at,
+         started_at, finished_at
+       FROM game_session
+       WHERE id = $1`,
+      [sessionId],
+    );
+    const session = result.rows[0];
+    if (!session) {
+      throw new ApiError(404, "SESSION_NOT_FOUND", "Game session not found");
+    }
+    if (session.status === "active" && session.question_started_at !== null) {
+      return await this.reconcileOverdueSession(session, reviewTimeSeconds);
+    }
+    return mapSession(session);
   }
 
   async getSessionResultSource(
@@ -645,11 +674,13 @@ export class PostgresGameRepository implements GameRepository {
       }
     >(
       `SELECT selection.participant_id, selection.question_index,
-         question.id, question.category, question.technology, question.weight, question.answer_time_seconds,
-         question.instruction, question.question, question.choices,
-         question.correct_option, question.explanation
+         selection.question_id AS id, revision.category, revision.technology, revision.weight,
+         revision.answer_time_seconds, revision.instruction, revision.question,
+         revision.choices, revision.correct_option, revision.explanation
        FROM session_participant_question selection
-       JOIN quiz_question question ON question.id = selection.question_id
+       JOIN quiz_question_revision revision
+         ON revision.id = selection.question_revision_id
+        AND revision.question_id = selection.question_id
        WHERE selection.game_session_id = $1
        ORDER BY selection.participant_id, selection.question_index`,
       [sessionId],

@@ -71,6 +71,22 @@ Deno.test("on-time session reads do not issue a recovery update", async () => {
   assert.equal(queryCount, 1);
 });
 
+Deno.test("signed session reads fetch state without a participant authentication join", async () => {
+  let sql = "";
+  const pool = {
+    query(text: string) {
+      sql = text;
+      return Promise.resolve({ rows: [sessionRow(new Date())] });
+    },
+  } as unknown as Pool;
+
+  await new PostgresGameRepository(pool).getSessionSnapshot(SESSION_ID, 5);
+
+  assert.doesNotMatch(sql, /JOIN participant/);
+  assert.doesNotMatch(sql, /access_token_hash/);
+  assert.match(sql, /FROM game_session/);
+});
+
 Deno.test("an overdue review advances with the next JSON timing snapshot", async () => {
   const queries: { text: string; values?: unknown[] }[] = [];
   const startedAt = new Date(Date.now() - 20_000);
@@ -212,6 +228,9 @@ Deno.test("session start selects a fixed 1-2-1 difficulty mix for every particip
     /CASE difficulty WHEN 1 THEN 1 WHEN 2 THEN 2 ELSE 1 END/,
   );
   assert.match(selectionSql, /INSERT INTO session_participant_question/);
+  assert.match(selectionSql, /JOIN quiz_question_revision revision/);
+  assert.match(selectionSql, /revision\.active/);
+  assert.match(selectionSql, /question_revision_id/);
 });
 
 Deno.test("participant question plan is fetched in one ordered database query", async () => {
@@ -249,5 +268,6 @@ Deno.test("participant question plan is fetched in one ordered database query", 
   assert.equal(plan.questions.length, 2);
   assert.equal(plan.questions[0].technology, "SQL / PostgreSQL");
   assert.match(questionSql, /ORDER BY selection\.question_index/);
+  assert.match(questionSql, /JOIN quiz_question_revision revision/);
   assert.doesNotMatch(questionSql, /selection\.question_index = \$3/);
 });

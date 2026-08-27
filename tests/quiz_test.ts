@@ -242,6 +242,33 @@ Deno.test("quiz JSON validation rejects duplicate ids and malformed choices", ()
   );
 });
 
+Deno.test("short-lived session auth tokens are bound to both session and bearer token", async () => {
+  let now = 1_000;
+  const service = createQuizService({
+    secret: "session-auth-test-secret-that-is-at-least-32-bytes",
+    now: () => now,
+  });
+  const token = await service.createSessionAuthToken("session-a", "participant-token-a");
+
+  assert.equal(
+    await service.isSessionAuthTokenValid(token, "session-a", "participant-token-a"),
+    true,
+  );
+  assert.equal(
+    await service.isSessionAuthTokenValid(token, "session-b", "participant-token-a"),
+    false,
+  );
+  assert.equal(
+    await service.isSessionAuthTokenValid(token, "session-a", "participant-token-b"),
+    false,
+  );
+  now += 60_001;
+  assert.equal(
+    await service.isSessionAuthTokenValid(token, "session-a", "participant-token-a"),
+    false,
+  );
+});
+
 Deno.test("database question bank has 10 beginner, 5 intermediate, and 3 advanced questions per category", () => {
   const counts = new Map<string, number>();
   for (const question of QUIZ_QUESTION_BANK) {
