@@ -3383,6 +3383,20 @@ a {
 
 /* Mission guide popup */
 .room-header-actions { display:flex; align-items:center; gap:8px; }
+.home-corner-logo {
+  position:absolute;
+  z-index:11;
+  top:var(--safe-top);
+  right:var(--safe-right);
+  width:48px;
+  height:48px;
+  overflow:hidden;
+  border:1px solid var(--line-strong);
+  border-radius:14px;
+  background:var(--night);
+  box-shadow:0 8px 24px rgba(0,0,0,.34),0 0 20px rgba(98,228,236,.12);
+}
+.home-corner-logo img { display:block; width:100%; height:100%; object-fit:cover; }
 .guide-open-button {
   display:inline-flex;
   align-items:center;
@@ -3400,7 +3414,7 @@ a {
   backdrop-filter:blur(8px);
 }
 .guide-open-button span { display:grid; place-items:center; width:17px; height:17px; border:1px solid currentColor; border-radius:50%; font-size:11px; }
-.guide-open-button--home { position:absolute; z-index:10; top:max(10px,env(safe-area-inset-top)); right:max(12px,env(safe-area-inset-right)); }
+.guide-open-button--home { position:absolute; z-index:10; top:var(--safe-top); right:calc(var(--safe-right) + 60px); }
 .guide-open-button:hover { color:var(--text); background:rgba(18,42,65,.92); }
 
 .guide-layer { position:relative; z-index:200; }
@@ -3447,7 +3461,8 @@ body.guide-open .guide-modal {
 .guide-finish-button { display:flex; align-items:center; justify-content:center; width:min(100%,390px); min-height:48px; margin:20px auto 0; border-radius:999px; color:#091321; background:linear-gradient(135deg,var(--orange),var(--orange-bright)); font-weight:900; cursor:pointer; box-shadow:0 12px 28px rgba(255,117,65,.25); }
 
 @media (max-width:620px) {
-  .guide-open-button--home { top:max(66px,calc(env(safe-area-inset-top) + 58px)); }
+  .home-corner-logo { width:42px; height:42px; border-radius:12px; }
+  .guide-open-button--home { top:max(62px,calc(env(safe-area-inset-top) + 54px)); right:var(--safe-right); }
   body.guide-open .guide-modal { width:calc(100% - 16px); max-height:92dvh; border-radius:18px; }
   .guide-scroll { max-height:92dvh; padding:21px 12px 24px; }
   .guide-heading { padding-inline:24px; }
