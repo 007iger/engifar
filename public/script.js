@@ -23,9 +23,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
   const STORAGE_KEY = "engifar-mission-v4";
   const ROOM_AUTH_STORAGE_KEY = "engifar-room-auth-v1";
   const HIDDEN_SOCKET_DISCONNECT_MS = 60_000;
-  // WebSocket notifications are process-local. Poll within the five-second review window so
-  // clients connected to another instance can still render the answer before the next question.
-  const ACTIVE_QUIZ_SYNC_INTERVAL_MS = 1_000;
+  const RECOVERY_SYNC_INTERVAL_MS = 60_000;
   let quizConfig = Object.freeze({ questionCount: 24, answerTimeSeconds: 15, reviewTimeSeconds: 5 });
   let authoritativeResults = null;
   const PROFILE_ROLES = Object.freeze({
@@ -138,6 +136,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     let stopped = false;
     let disconnectedWhileHidden = false;
     let retryCount = 0;
+    let hasConnected = false;
 
     function clearTimers() {
       if (heartbeatTimer !== null) globalThis.clearInterval(heartbeatTimer);
@@ -157,8 +156,10 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       onStatus("connecting");
 
       socket.addEventListener("open", () => {
+        const reconnected = hasConnected || retryCount > 0;
+        hasConnected = true;
         retryCount = 0;
-        onStatus("connected");
+        onStatus("connected", { reconnected });
         heartbeatTimer = globalThis.setInterval(() => {
           if (socket && socket.readyState === WebSocket.OPEN) socket.send("heartbeat");
         }, 5_000);
@@ -613,6 +614,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     let enteredQuiz = false;
     let refreshing = false;
     let avatarSignature = "";
+    let participants = [];
 
     function colorFor(participant, index) {
       if (participant.id === auth.participantId) return state.player.color;
@@ -621,9 +623,9 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       return crewColors[(hash + index) % crewColors.length];
     }
 
-    function renderParticipants(participants) {
+    function renderParticipants(participantList) {
       playerList.replaceChildren();
-      participants.forEach((participant, index) => {
+      participantList.forEach((participant, index) => {
         const card = document.createElement("div");
         card.className = "room-player-card";
         if (participant.id === auth.participantId) card.classList.add("is-you");
@@ -648,7 +650,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
         card.append(avatar, copy, badge);
         playerList.append(card);
       });
-      const fieldParticipants = participants.map((participant, index) => ({
+      const fieldParticipants = participantList.map((participant, index) => ({
         id: participant.id,
         name: participant.displayName,
         color: colorFor(participant, index),
@@ -659,7 +661,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
         avatarSignature = nextAvatarSignature;
         renderRoomAvatarField(avatarField, fieldParticipants);
       }
-      lobbyMessage.textContent = `${participants.length}人のクルーが参加中です。招待コードを仲間に伝えましょう。`;
+      lobbyMessage.textContent = `${participantList.length}人のクルーが参加中です。招待コードを仲間に伝えましょう。`;
     }
 
     function enterQuiz(session) {
@@ -681,7 +683,8 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           `/api/rooms/${encodeURIComponent(state.room.code)}`,
           { headers: bearerHeaders(auth) }
         );
-        renderParticipants(room.participants);
+        participants = room.participants;
+        renderParticipants(participants);
         lobbyStatus.textContent = "サーバーに接続済み";
         lobbyStatus.dataset.kind = "connected";
         if (room.status === "playing" && room.activeSession) enterQuiz(room.activeSession);
@@ -724,13 +727,25 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     connectRoomSocket(
       auth,
       (event) => {
-        if (event.type === "player_joined" || event.type === "player_left") {
-          void refreshRoom();
+        if (event.type === "player_joined") {
+          const participant = {
+            id: event.participantId,
+            displayName: event.displayName,
+            role: event.role
+          };
+          const existingIndex = participants.findIndex((item) => item.id === participant.id);
+          if (existingIndex >= 0) participants[existingIndex] = participant;
+          else participants.push(participant);
+          renderParticipants(participants);
+        } else if (event.type === "player_left") {
+          participants = participants.filter((participant) => participant.id !== event.participantId);
+          renderParticipants(participants);
         } else if (event.type === "host_started" && event.session) {
           enterQuiz(event.session);
         }
       },
-      (connectionStatus) => {
+      (connectionStatus, connection) => {
+        if (connectionStatus === "connected" && connection?.reconnected) void refreshRoom();
         if (lobbyStatus.dataset.kind === "error") return;
         lobbyStatus.textContent = connectionStatus === "connected"
           ? "リアルタイム接続済み"
@@ -744,10 +759,13 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     );
 
     void refreshRoom();
-    // 参加・開始通知はWebSocketで受け、20秒ごとの取得は通知を逃した場合の復旧用にする。
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) void refreshRoom();
+    });
+    // 通常更新はWebSocketで行い、DB取得は通知取りこぼしに備えた低頻度の安全同期だけにする。
     globalThis.setInterval(() => {
       if (!document.hidden) void refreshRoom();
-    }, 20_000);
+    }, RECOVERY_SYNC_INTERVAL_MS);
   }
 
   function initGuide() {
@@ -887,6 +905,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     let phaseToken = 0;
     let cancelClock = () => {};
     let answerQueue = Promise.resolve();
+    let eventQueue = Promise.resolve();
     let syncTimer = null;
 
     globalThis.addEventListener("pagehide", () => {
@@ -965,7 +984,8 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
 
     async function gradeQuestion(index, questionToken, showFeedback) {
       let result;
-      for (let attempt = 0; attempt < 12; attempt += 1) {
+      const retryDelays = [300, 800];
+      for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
         try {
           result = await requestApi(
             `/api/sessions/${encodeURIComponent(sessionId)}/quiz/questions/${index}/grade`,
@@ -982,8 +1002,8 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           );
           break;
         } catch (error) {
-          if (error.code !== "QUIZ_REVIEW_NOT_READY" || attempt === 11) throw error;
-          await new Promise((resolve) => globalThis.setTimeout(resolve, 100));
+          if (error.code !== "QUIZ_REVIEW_NOT_READY" || attempt === retryDelays.length) throw error;
+          await new Promise((resolve) => globalThis.setTimeout(resolve, retryDelays[attempt]));
         }
       }
 
@@ -1073,7 +1093,10 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           elements.reviewCount.textContent = String(shown);
           elements.timer.style.setProperty("--timer-progress", String(ratio));
         },
-        () => void syncSession()
+        () => globalThis.setTimeout(() => {
+          // question_startedが届かなかった場合だけ、答え合わせ終了後にDBから1回復旧する。
+          if (!finished && currentRenderedIndex === index) void syncSession();
+        }, 1_000)
       );
     }
 
@@ -1152,10 +1175,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
                 headers: bearerHeaders(auth),
                 body: JSON.stringify({ selectedOption: choiceIndex })
               }
-            )).then((answer) => {
-              if (answer.allParticipantsAnswered) void syncSession();
-              return answer;
-            }).catch((error) => {
+            )).catch((error) => {
               if (currentRenderedIndex !== index || reviewingIndex === index) return;
               elements.feedbackIcon.textContent = "!";
               elements.feedbackTitle.textContent = "回答を送信できませんでした";
@@ -1271,6 +1291,53 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       }
     }
 
+    async function applyQuestionStarted(event) {
+      if (
+        finished || !currentSession || event.sessionId !== sessionId ||
+        !Number.isInteger(event.questionIndex)
+      ) {
+        await syncSession();
+        return;
+      }
+      const session = {
+        ...currentSession,
+        status: "active",
+        currentQuestionIndex: event.questionIndex,
+        answerTimeSeconds: event.timeLimitSeconds,
+        questionStartedAt: event.questionStartedAt,
+        questionReviewStartedAt: null,
+        reviewEndsAt: null
+      };
+      currentSession = session;
+      try {
+        await catchUpTo(event.questionIndex);
+        await renderQuestion(session);
+      } catch {
+        // index飛びやローカル進捗との不整合時だけ、永続化された状態から復旧する。
+        await syncSession();
+      }
+    }
+
+    async function applyQuestionEnded(event) {
+      if (!Number.isInteger(event.questionIndex) || !Number.isFinite(event.reviewEndsAt)) {
+        await syncSession();
+        return;
+      }
+      await showReview(event.questionIndex, phaseToken, event.reviewEndsAt);
+      if (!finished && reviewingIndex !== event.questionIndex && state.quiz.index <= event.questionIndex) {
+        await syncSession();
+      }
+    }
+
+    async function applyAllQuestionsDone() {
+      try {
+        await catchUpTo(currentSession?.questionCount ?? quizConfig.questionCount);
+        await finishQuiz();
+      } catch {
+        await syncSession();
+      }
+    }
+
     try {
       await createAttemptIfNeeded();
       await syncSession();
@@ -1283,22 +1350,23 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
 
     if (!finished) {
       connectRoomSocket(auth, (event) => {
-        if (event.type === "question_started" || event.type === "all_questions_done") {
-          void syncSession();
-          return;
+        if (event.type === "question_started") {
+          eventQueue = eventQueue.then(() => applyQuestionStarted(event));
+        } else if (event.type === "question_ended") {
+          eventQueue = eventQueue.then(() => applyQuestionEnded(event));
+        } else if (event.type === "all_questions_done") {
+          eventQueue = eventQueue.then(() => applyAllQuestionsDone());
         }
-        if (event.type === "question_ended") {
-          // ポーリングや壁時計チェックを待たず、受信した瞬間に答え合わせへ進める。
-          // まだ描画が追いついていない場合はshowReview内のガードで無視され、
-          // 直後のsyncSessionで通常の追いつき処理に任せる。
-          void showReview(event.questionIndex, phaseToken, event.reviewEndsAt);
-          void syncSession();
-        }
+      }, (connectionStatus, connection) => {
+        if (connectionStatus === "connected" && connection?.reconnected) void syncSession();
       });
-      // WebSocketを通常経路とし、取りこぼし・別インスタンス時は答え合わせ中にDBへ追従する。
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) void syncSession();
+      });
+      // 通常進行はWebSocketイベントを直接適用し、60秒ごとの取得は復旧用に限定する。
       syncTimer = globalThis.setInterval(() => {
         if (!document.hidden) void syncSession();
-      }, ACTIVE_QUIZ_SYNC_INTERVAL_MS);
+      }, RECOVERY_SYNC_INTERVAL_MS);
     }
   }
 

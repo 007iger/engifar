@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { createApp } from "../src/app.ts";
-import { startHeartbeatMonitor, stopHeartbeatMonitor } from "../src/ws.ts";
+import {
+  broadcast,
+  startBroadcastChannel,
+  startHeartbeatMonitor,
+  stopBroadcastChannel,
+  stopHeartbeatMonitor,
+} from "../src/ws.ts";
 import type {
   AnswerSummary,
   AuthenticatedParticipant,
@@ -199,6 +205,80 @@ Deno.test("画面遷移中に再接続すれば離脱扱いにならない", asy
     assert.deepEqual(repository.disconnectedParticipantIds, [membership.participant.id]);
   } finally {
     stopHeartbeatMonitor();
+    await server.shutdown();
+  }
+});
+
+Deno.test("BroadcastChannelが別インスタンス相当のWebSocketイベントを双方向に中継する", async () => {
+  const repository = new FakeRepository();
+  const channelName = `engifar-events-test-${crypto.randomUUID()}`;
+  const remoteChannel = new BroadcastChannel(channelName);
+  const relayedMessages: unknown[] = [];
+  remoteChannel.onmessage = (event) => {
+    relayedMessages.push(event.data);
+    const message = event.data as { type?: string; participantId?: string };
+    if (message.type === "participant_connection_check" && message.participantId) {
+      remoteChannel.postMessage({
+        sourceInstanceId: "remote-instance",
+        type: "participant_connected",
+        participantId: message.participantId,
+      });
+    }
+  };
+  startBroadcastChannel(channelName);
+  const server = Deno.serve({ port: 8194 }, createApp(repository));
+
+  try {
+    const socket = new WebSocket(
+      "ws://localhost:8194/ws?roomCode=ABC234",
+      ["engifar-v1", TOKEN],
+    );
+    const received: Array<Record<string, unknown>> = [];
+    socket.onmessage = (event) => received.push(JSON.parse(event.data));
+    await new Promise((resolve) => socket.addEventListener("open", resolve, { once: true }));
+
+    broadcast(membership.room.id, { type: "player_left", participantId: "local-player" });
+    remoteChannel.postMessage({
+      sourceInstanceId: "remote-instance",
+      roomId: membership.room.id,
+      event: {
+        type: "question_started",
+        sessionId: "session-1",
+        questionIndex: 1,
+        timeLimitSeconds: 15,
+        questionStartedAt: NOW,
+      },
+    });
+
+    const deadline = Date.now() + 1_000;
+    while (
+      (received.length < 2 ||
+        !relayedMessages.some((message) => Object.hasOwn(message as object, "event"))) &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    assert.ok(received.some((event) => event.type === "player_left"));
+    assert.ok(received.some((event) => event.type === "question_started"));
+    const relayedEvents = relayedMessages.filter((message) =>
+      Object.hasOwn(message as object, "event")
+    ) as Array<{ event: unknown }>;
+    assert.equal(relayedEvents.length, 1, "別インスタンス由来のイベントを再投稿している");
+    assert.deepEqual(
+      relayedEvents[0].event,
+      { type: "player_left", participantId: "local-player" },
+    );
+    socket.close();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.deepEqual(
+      repository.disconnectedParticipantIds,
+      [],
+      "別インスタンスへの再接続が退出扱いになっている",
+    );
+  } finally {
+    stopBroadcastChannel();
+    remoteChannel.close();
     await server.shutdown();
   }
 });

@@ -5,7 +5,7 @@ import { PostgresGameRepository } from "./db/postgres_game_repository.ts";
 import { seedQuizQuestions } from "./db/seed_quiz_questions.ts";
 import { createQuizService } from "./quiz.ts";
 import { startRoomCleanupMonitor } from "./roomCleanup.ts";
-import { startHeartbeatMonitor } from "./ws.ts";
+import { startBroadcastChannel, startHeartbeatMonitor } from "./ws.ts";
 
 export async function startServer(): Promise<Deno.HttpServer> {
   const pool = createPool();
@@ -22,6 +22,7 @@ export async function startServer(): Promise<Deno.HttpServer> {
       );
     }
     const quizService = createQuizService({ secret: quizTokenSecret });
+    startBroadcastChannel();
     startHeartbeatMonitor(repository);
     startRoomCleanupMonitor(repository);
     return Deno.serve(createApp(repository, { quizService }));
