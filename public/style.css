@@ -3529,3 +3529,64 @@ body.guide-open .guide-modal {
   body.guide-open .guide-overlay,
   body.guide-open .guide-modal { animation:none; }
 }
+
+/* Result screen: let content flow to its natural height and scroll instead of being squeezed to fit the viewport */
+.result-layout {
+  align-items: start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding-block: clamp(18px, 3vh, 32px) clamp(32px, 8vh, 64px);
+  scrollbar-color: var(--cyan-deep) rgba(4, 13, 25, .5);
+}
+
+.result-actions {
+  margin-top: clamp(14px, 2.5vh, 22px);
+}
+
+@media (max-width: 760px) {
+  .result-layout {
+    grid-template-rows: auto auto;
+    align-content: start;
+    padding-block: 10px clamp(32px, 10vh, 64px);
+  }
+
+  .result-visual {
+    height: min(44vh, 340px);
+    min-height: 240px;
+  }
+}
+
+@media (max-height: 590px) and (max-width: 760px),
+       (max-height: 520px) and (min-width: 600px) {
+  .result-message,
+  .threshold-note {
+    display: block;
+  }
+
+  .result-panel {
+    padding: clamp(14px, 3vh, 20px);
+  }
+
+  .result-metrics {
+    margin: clamp(10px, 2vh, 16px) 0;
+  }
+}
+
+/* The two-column landscape variants (short + wide viewports) size .result-panel
+   via the grid track, not the viewport — undo the portrait-mode width/height
+   overrides above so the panel fills its column instead of forcing full-viewport
+   width and clipping against .result-layout's scroll clip. */
+@media (max-height: 520px) and (min-width: 600px),
+       (max-height: 620px) and (min-width: 700px) {
+  .result-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .result-visual {
+    height: 100%;
+    min-height: 0;
+  }
+}
