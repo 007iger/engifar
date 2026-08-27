@@ -42,13 +42,10 @@ button { font: inherit; }
 
 .build-workshop { position: relative; height: min(52vh, 390px); margin-top: 12px; }
 .build-orbit { position: absolute; inset: 18% 10%; border: 1px solid rgba(98,228,236,.28); border-radius: 50%; rotate: -8deg; }
-.build-rocket { position: absolute; left: 50%; top: 48%; width: 96px; height: 210px; border-radius: 48px 48px 20px 20px; background: linear-gradient(90deg,#e7edf1,#fff 48%,#becbd3); box-shadow: 0 0 50px rgba(98,228,236,.22); translate: -50% -50%; animation: build-rocket-bob 2s ease-in-out infinite; }
-.build-rocket::before { position: absolute; left: 0; right: 0; top: -36px; height: 75px; content: ""; border-radius: 50% 50% 20% 20%; background: linear-gradient(90deg,#e7edf1,#fff 48%,#becbd3); clip-path: polygon(50% 0,100% 100%,0 100%); }
-.build-rocket::after { position: absolute; left: -25px; right: -25px; bottom: 9px; height: 58px; content: ""; background: #62e4ec; clip-path: polygon(22% 0,0 100%,35% 72%,65% 72%,100% 100%,78% 0); }
-.build-rocket i { position: absolute; z-index: 2; left: 50%; top: 42px; width: 43px; height: 43px; border: 7px solid #26384a; border-radius: 50%; background: radial-gradient(circle at 35% 30%,#d8ffff,#2baab8); translate: -50% 0; }
-.build-rocket b { position: absolute; z-index: 2; inset: 108px 0 auto; height: 10px; background: #ff7541; }
-.build-rocket span { position: absolute; left: 50%; bottom: -44px; width: 38px; height: 54px; background: linear-gradient(#fff176,#ff7541,transparent); clip-path: polygon(20% 0,80% 0,100% 45%,50% 100%,0 45%); translate: -50% 0; opacity: 0; }
-body[data-complete="true"] .build-rocket span { opacity: 1; animation: build-flame .2s ease-in-out infinite alternate; }
+.build-rocket { position: absolute; left: 50%; top: 48%; width: 96px; height: 210px; filter: drop-shadow(0 0 50px rgba(98,228,236,.22)); translate: -50% -50%; animation: build-rocket-bob 2s ease-in-out infinite; }
+.build-rocket-svg { display: block; width: 100%; height: 100%; }
+.build-rocket-flame { transform-box: fill-box; transform-origin: 50% 0%; opacity: 0; }
+body[data-complete="true"] .build-rocket-flame { opacity: 1; animation: build-flame .2s ease-in-out infinite alternate; }
 
 .build-bot { --bot-color:#54d37c; position:absolute; width:48px; height:62px; border-radius:46% 46% 42% 42%; background:var(--bot-color); box-shadow:0 0 18px var(--bot-color); animation:build-bot 1.2s ease-in-out infinite alternate; }
 .build-bot::before { position:absolute; left:14%; top:28%; width:72%; height:31%; content:""; border-radius:999px; background:#f0f7f5; }
