@@ -21,6 +21,8 @@ const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ROOM_CODE_LENGTH = 6;
 const ROOM_CODE_ATTEMPTS = 5;
 const SESSION_RECOVERY_GRACE_MS = 2_000;
+// 通常の1カテゴリ4問(初級1+中級2+上級1)×6カテゴリ=24問。quiz.tsのQUESTIONS_PER_ATTEMPTと対応する値。
+const FULL_QUESTION_COUNT = 24;
 
 interface RoomRow extends QueryResultRow {
   id: string;
@@ -461,44 +463,93 @@ export class PostgresGameRepository implements GameRepository {
          RETURNING participant_id`,
         [session.id, room.id],
       );
-      const selectedQuestions = await client.query(
-        `WITH categories(category, category_order) AS (
-           VALUES
-             ('フロントエンド', 1), ('バックエンド', 2), ('データベース', 3),
-             ('API', 4), ('インフラ', 5), ('セキュリティ', 6)
-         ), ranked AS (
-           SELECT sp.game_session_id, sp.participant_id, category.category_order,
-             question.id AS question_id, revision.id AS question_revision_id,
-             question.difficulty,
-             row_number() OVER (
-               PARTITION BY sp.participant_id, question.category, question.difficulty
-               ORDER BY random()
-             ) AS difficulty_rank
-           FROM session_participant sp
-           CROSS JOIN categories category
-           JOIN quiz_question question
-             ON question.category = category.category
-            AND question.active
-           JOIN quiz_question_revision revision
-             ON revision.question_id = question.id
-            AND revision.active
-           WHERE sp.game_session_id = $1
-         ), selected AS (
-           SELECT *, (row_number() OVER (
-             PARTITION BY participant_id
-             ORDER BY category_order, difficulty, difficulty_rank
-           ) - 1)::smallint AS question_index
-           FROM ranked
-           WHERE difficulty_rank <= CASE difficulty WHEN 1 THEN 1 WHEN 2 THEN 2 ELSE 1 END
-         )
-         INSERT INTO session_participant_question (
-           game_session_id, participant_id, question_index, question_id, question_revision_id
-         )
-         SELECT game_session_id, participant_id, question_index, question_id, question_revision_id
-         FROM selected
-         RETURNING question_id`,
-        [session.id],
-      );
+      // 通常時(24問)は既存の「カテゴリごとにまとめて出題」クエリを一切変更せず使う。
+      // デモ等でquestionCountが短縮されている時だけ、カテゴリを1問ずつ均等に巡回する
+      // 別クエリに分岐する(通常フローの出題順には影響しない)。
+      const selectedQuestions = questionCount >= FULL_QUESTION_COUNT
+        ? await client.query(
+          `WITH categories(category, category_order) AS (
+             VALUES
+               ('フロントエンド', 1), ('バックエンド', 2), ('データベース', 3),
+               ('API', 4), ('インフラ', 5), ('セキュリティ', 6)
+           ), ranked AS (
+             SELECT sp.game_session_id, sp.participant_id, category.category_order,
+               question.id AS question_id, revision.id AS question_revision_id,
+               question.difficulty,
+               row_number() OVER (
+                 PARTITION BY sp.participant_id, question.category, question.difficulty
+                 ORDER BY random()
+               ) AS difficulty_rank
+             FROM session_participant sp
+             CROSS JOIN categories category
+             JOIN quiz_question question
+               ON question.category = category.category
+              AND question.active
+             JOIN quiz_question_revision revision
+               ON revision.question_id = question.id
+              AND revision.active
+             WHERE sp.game_session_id = $1
+           ), selected AS (
+             SELECT *, (row_number() OVER (
+               PARTITION BY participant_id
+               ORDER BY category_order, difficulty, difficulty_rank
+             ) - 1)::smallint AS question_index
+             FROM ranked
+             WHERE difficulty_rank <= CASE difficulty WHEN 1 THEN 1 WHEN 2 THEN 2 ELSE 1 END
+           )
+           INSERT INTO session_participant_question (
+             game_session_id, participant_id, question_index, question_id, question_revision_id
+           )
+           SELECT game_session_id, participant_id, question_index, question_id, question_revision_id
+           FROM selected
+           RETURNING question_id`,
+          [session.id],
+        )
+        : await client.query(
+          `WITH categories(category, category_order) AS (
+             VALUES
+               ('フロントエンド', 1), ('バックエンド', 2), ('データベース', 3),
+               ('API', 4), ('インフラ', 5), ('セキュリティ', 6)
+           ), ranked AS (
+             SELECT sp.game_session_id, sp.participant_id, category.category_order,
+               question.id AS question_id, revision.id AS question_revision_id,
+               question.difficulty,
+               row_number() OVER (
+                 PARTITION BY sp.participant_id, question.category, question.difficulty
+                 ORDER BY random()
+               ) AS difficulty_rank
+             FROM session_participant sp
+             CROSS JOIN categories category
+             JOIN quiz_question question
+               ON question.category = category.category
+              AND question.active
+             JOIN quiz_question_revision revision
+               ON revision.question_id = question.id
+              AND revision.active
+             WHERE sp.game_session_id = $1
+           ), capped AS (
+             SELECT *, row_number() OVER (
+               PARTITION BY participant_id, category_order
+               ORDER BY difficulty, difficulty_rank
+             ) AS position_in_category
+             FROM ranked
+             WHERE difficulty_rank <= CASE difficulty WHEN 1 THEN 1 WHEN 2 THEN 2 ELSE 1 END
+           ), selected AS (
+             SELECT *, (row_number() OVER (
+               PARTITION BY participant_id
+               ORDER BY position_in_category, category_order
+             ) - 1)::smallint AS question_index
+             FROM capped
+           )
+           INSERT INTO session_participant_question (
+             game_session_id, participant_id, question_index, question_id, question_revision_id
+           )
+           SELECT game_session_id, participant_id, question_index, question_id, question_revision_id
+           FROM selected
+           WHERE question_index < $2
+           RETURNING question_id`,
+          [session.id, questionCount],
+        );
       const expectedSelectionCount = (participantSnapshot.rowCount ?? 0) * questionCount;
       if (selectedQuestions.rowCount !== expectedSelectionCount) {
         throw new Error(
