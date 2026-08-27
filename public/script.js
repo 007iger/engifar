@@ -82,7 +82,8 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       roomId: membership.room.id,
       accessToken: membership.accessToken,
       participantId: membership.participant.id,
-      role: membership.participant.role
+      role: membership.participant.role,
+      crewColor: membership.participant.crewColor
     };
     globalThis.sessionStorage.setItem(ROOM_AUTH_STORAGE_KEY, JSON.stringify(value));
     return value;
@@ -538,7 +539,10 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           : `/api/rooms/${encodeURIComponent(requestedCode)}/participants`;
         const membership = await requestApi(path, {
           method: "POST",
-          body: JSON.stringify({ displayName: fresh.player.name })
+          body: JSON.stringify({
+            displayName: fresh.player.name,
+            crewColor: fresh.player.color
+          })
         });
         saveRoomAuth(membership);
         fresh.room = {
@@ -610,29 +614,27 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       return;
     }
 
-    const crewColors = ["#54d37c", "#5ca9ff", "#f5cf4b", "#ff665f", "#b889ff", "#62e4ec"];
     let enteredQuiz = false;
     let refreshing = false;
     let avatarSignature = "";
     let participants = [];
 
-    function colorFor(participant, index) {
-      if (participant.id === auth.participantId) return state.player.color;
-      let hash = 0;
-      for (const character of participant.id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-      return crewColors[(hash + index) % crewColors.length];
+    function colorFor(participant) {
+      if (/^#[0-9a-f]{6}$/i.test(participant.crewColor || "")) return participant.crewColor;
+      if (participant.id === auth.participantId) return auth.crewColor || state.player.color;
+      return "#54d37c";
     }
 
     function renderParticipants(participantList) {
       playerList.replaceChildren();
-      participantList.forEach((participant, index) => {
+      participantList.forEach((participant) => {
         const card = document.createElement("div");
         card.className = "room-player-card";
         if (participant.id === auth.participantId) card.classList.add("is-you");
 
         const avatar = document.createElement("span");
         avatar.className = "crew-avatar crew-avatar--small";
-        avatar.style.setProperty("--crew-color", colorFor(participant, index));
+        avatar.style.setProperty("--crew-color", colorFor(participant));
         avatar.setAttribute("aria-hidden", "true");
         avatar.append(document.createElement("i"));
         decorateCrewAvatar(avatar);
@@ -650,10 +652,10 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
         card.append(avatar, copy, badge);
         playerList.append(card);
       });
-      const fieldParticipants = participantList.map((participant, index) => ({
+      const fieldParticipants = participantList.map((participant) => ({
         id: participant.id,
         name: participant.displayName,
-        color: colorFor(participant, index),
+        color: colorFor(participant),
         isYou: participant.id === auth.participantId,
       }));
       const nextAvatarSignature = JSON.stringify(fieldParticipants);
@@ -731,6 +733,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           const participant = {
             id: event.participantId,
             displayName: event.displayName,
+            crewColor: event.crewColor,
             role: event.role
           };
           const existingIndex = participants.findIndex((item) => item.id === participant.id);
@@ -1140,6 +1143,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
         currentQuestionToken = start.questionToken;
         elements.current.textContent = String(index + 1).padStart(2, "0");
         elements.category.textContent = question.category;
+        elements.technology.textContent = question.technology;
         elements.difficulty.textContent = difficultyLabel(question.weight);
         elements.progress.style.width = `${((index + 1) / quizConfig.questionCount) * 100}%`;
         elements.timerLabel.textContent = "回答";
@@ -1380,6 +1384,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       current: document.querySelector("#question-current"),
       total: document.querySelector("#question-total"),
       category: document.querySelector("#question-category"),
+      technology: document.querySelector("#question-technology"),
       difficulty: document.querySelector("#question-difficulty"),
       progress: document.querySelector("#quiz-progress"),
       timer: document.querySelector("#timer-dial"),
@@ -1623,6 +1628,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       questionToken = start.questionToken;
       elements.current.textContent = String(questionIndex + 1).padStart(2, "0");
       elements.category.textContent = question.category;
+      elements.technology.textContent = question.technology;
       elements.difficulty.textContent = difficultyLabel(question.weight);
       elements.progress.style.width = `${((questionIndex + 1) / quizConfig.questionCount) * 100}%`;
       elements.timerLabel.textContent = "回答";

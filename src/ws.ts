@@ -8,6 +8,7 @@ export type WsEvent =
     type: "player_joined";
     participantId: string;
     displayName: string;
+    crewColor: string;
     role: ParticipantSummary["role"];
   }
   | { type: "player_left"; participantId: string }

@@ -51,6 +51,7 @@ Deno.test("public JavaScript does not bundle quiz questions or answers", async (
 
 Deno.test("room controls call the shared room and session APIs", async () => {
   const source = await Deno.readTextFile("public/script.js");
+  const quizHtml = await Deno.readTextFile("public/quiz.html");
 
   assert.match(source, /["']\/api\/rooms["']/);
   assert.match(source, /\/participants`/);
@@ -59,6 +60,10 @@ Deno.test("room controls call the shared room and session APIs", async () => {
   assert.match(source, /new WebSocket\(url, \["engifar-v1", auth\.accessToken\]\)/);
   assert.match(source, /\/results`/);
   assert.match(source, /engifar-room-auth-v1/);
+  assert.match(source, /crewColor: fresh\.player\.color/);
+  assert.match(source, /participant\.crewColor/);
+  assert.match(source, /elements\.technology\.textContent = question\.technology/);
+  assert.match(quizHtml, /id="question-technology"/);
   assert.doesNotMatch(source, /searchParams\.set\("token"/);
 });
 

@@ -1,6 +1,11 @@
 import { serveDir } from "@std/http/file-server";
 import { ApiError } from "./errors.ts";
-import type { GameGenre, GameRepository, SessionResults } from "./types.ts";
+import type {
+  GameGenre,
+  GameRepository,
+  ParticipantQuestionPlan,
+  SessionResults,
+} from "./types.ts";
 import { broadcast, handleWsUpgrade } from "./ws.ts";
 import { scheduleQuestionAdvance, triggerEarlyQuestionEnd } from "./questionLoop.ts";
 import {
@@ -13,6 +18,8 @@ import {
 
 const MAX_JSON_BODY_BYTES = 16 * 1024;
 const FIRST_QUESTION_START_DELAY_MS = 3_000;
+const QUESTION_PLAN_CACHE_TTL_MS = 15 * 60 * 1_000;
+const QUESTION_PLAN_CACHE_MAX_ENTRIES = 1_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SECURITY_HEADERS = Object.freeze({
   "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
@@ -33,6 +40,42 @@ interface AppOptions {
 
 interface JsonRecord {
   [key: string]: unknown;
+}
+
+class ParticipantQuestionPlanCache {
+  readonly #entries = new Map<
+    string,
+    { expiresAt: number; value: Promise<ParticipantQuestionPlan> }
+  >();
+
+  constructor(private readonly repository: GameRepository) {}
+
+  async get(sessionId: string, accessToken: string): Promise<ParticipantQuestionPlan> {
+    const tokenDigest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(accessToken),
+    );
+    const key = `${sessionId}:${
+      Array.from(new Uint8Array(tokenDigest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+    }`;
+    const now = Date.now();
+    const cached = this.#entries.get(key);
+    if (cached && cached.expiresAt > now) return await cached.value;
+    if (cached) this.#entries.delete(key);
+
+    const value = this.repository.getParticipantQuestionPlan(sessionId, accessToken);
+    const entry = { expiresAt: now + QUESTION_PLAN_CACHE_TTL_MS, value };
+    this.#entries.set(key, entry);
+    if (this.#entries.size > QUESTION_PLAN_CACHE_MAX_ENTRIES) {
+      this.#entries.delete(this.#entries.keys().next().value!);
+    }
+    try {
+      return await value;
+    } catch (error) {
+      if (this.#entries.get(key) === entry) this.#entries.delete(key);
+      throw error;
+    }
+  }
 }
 
 function json(payload: unknown, status = 200, extraHeaders: HeadersInit = {}): Response {
@@ -127,6 +170,13 @@ function displayNameFrom(body: JsonRecord): string {
     );
   }
   return displayName;
+}
+
+function crewColorFrom(body: JsonRecord): string {
+  if (typeof body.crewColor !== "string" || !/^#[0-9a-fA-F]{6}$/.test(body.crewColor)) {
+    throw new ApiError(400, "INVALID_CREW_COLOR", "crewColor must be a six-digit hex color");
+  }
+  return body.crewColor.toLowerCase();
 }
 
 function selectedOptionFrom(body: JsonRecord): number {
@@ -239,6 +289,7 @@ async function handleApi(
   request: Request,
   repository: GameRepository,
   quizService: QuizService,
+  questionPlanCache: ParticipantQuestionPlanCache,
 ): Promise<Response> {
   const { pathname } = new URL(request.url);
 
@@ -288,7 +339,9 @@ async function handleApi(
 
   if (request.method === "POST" && pathname === "/api/rooms") {
     const body = await readJsonObject(request);
-    return json({ data: await repository.createRoom(displayNameFrom(body)) }, 201);
+    return json({
+      data: await repository.createRoom(displayNameFrom(body), crewColorFrom(body)),
+    }, 201);
   }
 
   const roomParticipantsMatch = pathname.match(/^\/api\/rooms\/([^/]+)\/participants$/);
@@ -297,11 +350,13 @@ async function handleApi(
     const result = await repository.joinRoom(
       roomCode(decodeURIComponent(roomParticipantsMatch[1])),
       displayNameFrom(body),
+      crewColorFrom(body),
     );
     broadcast(result.room.id, {
       type: "player_joined",
       participantId: result.participant.id,
       displayName: result.participant.displayName,
+      crewColor: result.participant.crewColor,
       role: result.participant.role,
     });
     return json({ data: result }, 201);
@@ -375,6 +430,7 @@ async function handleApi(
       return {
         participantId: participant.participantId,
         displayName: participant.displayName,
+        crewColor: participant.crewColor,
         role: participant.role,
         ...score,
         averageResponseTimeMs: responseTimes.length
@@ -434,6 +490,7 @@ async function handleApi(
       const identity = {
         participantId: participant.participantId,
         displayName: participant.displayName,
+        crewColor: participant.crewColor,
         role: participant.role,
         isRequester,
         published,
@@ -514,9 +571,13 @@ async function handleApi(
     }
 
     const body = await readJsonObject(request);
-    const selection = session.choiceOrderVersion >= 4
-      ? await repository.getParticipantQuestionSelection(session.id, accessToken, requestedIndex)
+    const plan = session.choiceOrderVersion >= 4
+      ? await questionPlanCache.get(session.id, accessToken)
       : null;
+    const selectedQuestion = plan?.questions[requestedIndex];
+    if (plan && !selectedQuestion) {
+      throw new ApiError(404, "QUIZ_QUESTION_NOT_FOUND", "Stored quiz question not found");
+    }
     const revealAt = session.status === "active" &&
         requestedIndex === session.currentQuestionIndex && session.questionStartedAt
       ? Date.parse(session.questionStartedAt) + session.answerTimeSeconds * 1000
@@ -526,12 +587,12 @@ async function handleApi(
         requestedIndex,
         quizTokenFrom(body, "progressToken"),
         revealAt,
-        selection
-          ? participantChoiceOrderVariant(session, selection.participantId)
+        plan
+          ? participantChoiceOrderVariant(session, plan.participantId)
           : choiceOrderVariant(session),
         session.answerTimeSeconds,
         questionSetVersionForChoiceOrder(session.choiceOrderVersion),
-        selection?.question,
+        selectedQuestion,
       ),
     });
   }
@@ -582,16 +643,20 @@ async function handleApi(
       ? Date.parse(session.questionReviewStartedAt)
       : undefined;
     const body = await readJsonObject(request);
-    const selection = session.choiceOrderVersion >= 4
-      ? await repository.getParticipantQuestionSelection(session.id, accessToken, requestedIndex)
+    const plan = session.choiceOrderVersion >= 4
+      ? await questionPlanCache.get(session.id, accessToken)
       : null;
+    const selectedQuestion = plan?.questions[requestedIndex];
+    if (plan && !selectedQuestion) {
+      throw new ApiError(404, "QUIZ_QUESTION_NOT_FOUND", "Stored quiz question not found");
+    }
     return json({
       data: await quizService.gradeQuestion(
         requestedIndex,
         quizTokenFrom(body, "questionToken"),
         quizSelectedOptionFrom(body),
         trustedRevealAt,
-        selection?.question,
+        selectedQuestion,
       ),
     });
   }
@@ -638,6 +703,7 @@ export function createApp(
   const staticRoot = options.staticRoot ?? "public";
   const assetRoot = options.assetRoot ?? "assets";
   const quizService = options.quizService ?? createQuizService();
+  const questionPlanCache = new ParticipantQuestionPlanCache(repository);
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -665,7 +731,7 @@ export function createApp(
 
     if (pathname.startsWith("/api/")) {
       try {
-        return await handleApi(request, repository, quizService);
+        return await handleApi(request, repository, quizService, questionPlanCache);
       } catch (error) {
         if (error instanceof ApiError) return apiErrorResponse(error);
         if (error instanceof URIError) {

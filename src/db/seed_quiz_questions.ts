@@ -10,19 +10,20 @@ export async function seedQuizQuestions(pool: Pool): Promise<void> {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('engifar_quiz_question_seed'))");
     await client.query(
       `INSERT INTO quiz_question (
-         id, category, difficulty, weight, answer_time_seconds, instruction,
+         id, category, technology, difficulty, weight, answer_time_seconds, instruction,
          question, choices, correct_option, explanation, active, updated_at
        )
-       SELECT question.id, question.category, question.difficulty, question.weight,
+       SELECT question.id, question.category, question.technology, question.difficulty, question.weight,
          question.answer_time_seconds, question.instruction, question.question,
          question.choices, question.correct_option, question.explanation, true, now()
        FROM jsonb_to_recordset($1::jsonb) AS question(
-         id varchar(64), category varchar(32), difficulty smallint, weight smallint,
+         id varchar(64), category varchar(32), technology varchar(64), difficulty smallint, weight smallint,
          answer_time_seconds smallint, instruction text, question text, choices text[],
          correct_option smallint, explanation text
        )
        ON CONFLICT (id) DO UPDATE SET
          category = EXCLUDED.category,
+         technology = EXCLUDED.technology,
          difficulty = EXCLUDED.difficulty,
          weight = EXCLUDED.weight,
          answer_time_seconds = EXCLUDED.answer_time_seconds,
@@ -36,6 +37,7 @@ export async function seedQuizQuestions(pool: Pool): Promise<void> {
       [JSON.stringify(QUIZ_QUESTION_BANK.map((question) => ({
         id: question.id,
         category: question.category,
+        technology: question.technology,
         difficulty: question.difficulty,
         weight: question.weight,
         answer_time_seconds: question.answerTimeSeconds,

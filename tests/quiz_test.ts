@@ -221,6 +221,7 @@ Deno.test("quiz JSON validation rejects duplicate ids and malformed choices", ()
   const validQuestion = {
     id: "sample-question",
     category: "API",
+    technology: "HTTP",
     weight: 1,
     answerTimeSeconds: 10,
     instruction: "Choose one",

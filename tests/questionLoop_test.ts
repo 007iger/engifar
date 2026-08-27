@@ -146,7 +146,13 @@ class WsRecordingRepository implements Partial<GameRepository> {
   authenticateParticipant(): Promise<AuthenticatedParticipant> {
     return Promise.resolve({
       roomId: WS_ROOM_ID,
-      participant: { id: "participant-1", displayName: "tester", role: "host", joinedAt: NOW },
+      participant: {
+        id: "participant-1",
+        displayName: "tester",
+        crewColor: "#54d37c",
+        role: "host",
+        joinedAt: NOW,
+      },
     });
   }
 

@@ -17,6 +17,7 @@ const decoder = new TextDecoder();
 export interface RawQuizQuestion {
   id: string;
   category: string;
+  technology: string;
   weight: number;
   answerTimeSeconds: number;
   instruction: string;
@@ -30,6 +31,7 @@ export interface PublicQuizQuestion {
   id: string;
   index: number;
   category: string;
+  technology: string;
   weight: number;
   instruction: string;
   question: string;
@@ -149,6 +151,7 @@ export function validateQuizQuestions(value: unknown): readonly Readonly<RawQuiz
     return Object.freeze({
       id,
       category: requiredText("category"),
+      technology: requiredText("technology"),
       weight: item.weight,
       answerTimeSeconds: item.answerTimeSeconds,
       instruction: requiredText("instruction"),
@@ -205,8 +208,8 @@ function publicQuestion(
   index: number,
   shuffled: Readonly<RawQuizQuestion>,
 ): PublicQuizQuestion {
-  const { id, category, weight, instruction, question, choices } = shuffled;
-  return { id, index, category, weight, instruction, question, choices };
+  const { id, category, technology, weight, instruction, question, choices } = shuffled;
+  return { id, index, category, technology, weight, instruction, question, choices };
 }
 
 function encodeBase64Url(bytes: Uint8Array): string {

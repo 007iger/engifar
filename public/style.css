@@ -831,10 +831,13 @@ a {
 .quiz-head-side {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 7px;
 }
 
 .category-chip,
+.technology-chip,
 .difficulty-chip {
   display: inline-flex;
   align-items: center;
@@ -850,6 +853,12 @@ a {
   border: 1px solid rgba(98, 228, 236, .3);
   color: var(--cyan);
   background: rgba(98, 228, 236, .08);
+}
+
+.technology-chip {
+  border: 1px solid rgba(184, 137, 255, .32);
+  color: #d9c2ff;
+  background: rgba(184, 137, 255, .1);
 }
 
 .difficulty-chip {
@@ -2282,6 +2291,7 @@ a {
   }
 
   .category-chip,
+  .technology-chip,
   .difficulty-chip {
     height: 23px;
     padding-inline: 7px;

@@ -213,3 +213,41 @@ Deno.test("session start selects a fixed 1-2-1 difficulty mix for every particip
   );
   assert.match(selectionSql, /INSERT INTO session_participant_question/);
 });
+
+Deno.test("participant question plan is fetched in one ordered database query", async () => {
+  let queryCount = 0;
+  let questionSql = "";
+  const pool = {
+    query(text: string) {
+      queryCount += 1;
+      questionSql = text;
+      return Promise.resolve({
+        rows: [0, 1].map((questionIndex) => ({
+          participant_id: "33333333-3333-4333-8333-333333333333",
+          question_index: questionIndex,
+          id: `question-${questionIndex}`,
+          category: "データベース",
+          technology: "SQL / PostgreSQL",
+          weight: 1,
+          answer_time_seconds: 15,
+          instruction: "instruction",
+          question: "SELECT ＿＿＿",
+          choices: ["A", "B", "C", "D"],
+          correct_option: 0,
+          explanation: "explanation",
+        })),
+      });
+    },
+  } as unknown as Pool;
+
+  const plan = await new PostgresGameRepository(pool).getParticipantQuestionPlan(
+    SESSION_ID,
+    TOKEN,
+  );
+
+  assert.equal(queryCount, 1);
+  assert.equal(plan.questions.length, 2);
+  assert.equal(plan.questions[0].technology, "SQL / PostgreSQL");
+  assert.match(questionSql, /ORDER BY selection\.question_index/);
+  assert.doesNotMatch(questionSql, /selection\.question_index = \$3/);
+});

@@ -79,3 +79,14 @@ Deno.test("question bank migration stores per-user question selections", async (
   assert.match(migration, /UNIQUE \(game_session_id, participant_id, question_id\)/);
   assert.match(migration, /ALTER COLUMN choice_order_version SET DEFAULT 4/);
 });
+
+Deno.test("question metadata and crew colors are persisted and snapshotted", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/008_question_technology_and_crew_color.sql", import.meta.url),
+  );
+
+  assert.match(migration, /ADD COLUMN technology varchar\(64\) NOT NULL/);
+  assert.match(migration, /ADD COLUMN crew_color varchar\(7\) NOT NULL/);
+  assert.match(migration, /ADD COLUMN crew_color_snapshot varchar\(7\) NOT NULL/);
+  assert.match(migration, /crew_color ~ '\^#\[0-9a-f\]\{6\}\$'/);
+});

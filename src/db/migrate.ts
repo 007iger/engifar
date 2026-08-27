@@ -44,6 +44,13 @@ const migrations: Migration[] = [
     version: "007_quiz_question_bank",
     url: new URL("../../migrations/007_quiz_question_bank.sql", import.meta.url),
   },
+  {
+    version: "008_question_technology_and_crew_color",
+    url: new URL(
+      "../../migrations/008_question_technology_and_crew_color.sql",
+      import.meta.url,
+    ),
+  },
 ];
 
 async function checksum(sql: string): Promise<string> {
