@@ -104,6 +104,8 @@ export interface QuizServiceOptions {
   now?: () => number;
   answerTimeSeconds?: number;
   reviewTimeSeconds?: number;
+  /** デモ等で問題数を短縮したい場合に指定する(1〜QUESTIONS_PER_ATTEMPT)。省略時は通常の24問。 */
+  questionCount?: number;
 }
 
 const EXPECTED_CHOICE_COUNT = 4;
@@ -296,12 +298,18 @@ export class QuizService {
       ["sign", "verify"],
     );
     this.#now = options.now ?? Date.now;
+    const questionCount = options.questionCount ?? QUESTIONS_PER_ATTEMPT;
+    if (
+      !Number.isInteger(questionCount) || questionCount < 1 || questionCount > QUESTIONS_PER_ATTEMPT
+    ) {
+      throw new Error(`questionCount must be an integer between 1 and ${QUESTIONS_PER_ATTEMPT}`);
+    }
     const answerTimeSecondsByQuestion = Object.freeze(Array.from(
-      { length: QUESTIONS_PER_ATTEMPT },
+      { length: questionCount },
       () => options.answerTimeSeconds ?? DEFAULT_ANSWER_TIME_SECONDS,
     ));
     this.config = Object.freeze({
-      questionCount: QUESTIONS_PER_ATTEMPT,
+      questionCount,
       answerTimeSeconds: answerTimeSecondsByQuestion[0] ?? DEFAULT_ANSWER_TIME_SECONDS,
       answerTimeSecondsByQuestion,
       reviewTimeSeconds: options.reviewTimeSeconds ?? DEFAULT_REVIEW_TIME_SECONDS,
@@ -444,7 +452,7 @@ export class QuizService {
     const questionSetVersion = token.questionSetVersion ?? LEGACY_QUESTION_SET_VERSION;
     const nextIndex = index + 1;
     const questionCount = questionSetVersion === DATABASE_QUESTION_SET_VERSION
-      ? QUESTIONS_PER_ATTEMPT
+      ? this.config.questionCount
       : questionsForVersion(questionSetVersion).length;
     const nextProgressToken = nextIndex < questionCount
       ? await this.#sign({

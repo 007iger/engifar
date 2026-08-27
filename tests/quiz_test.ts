@@ -366,3 +366,20 @@ Deno.test("database-selected questions are used for display, grading, and catego
     "セキュリティ",
   ]);
 });
+
+Deno.test("questionCountを指定すると短縮したデモ用の問題数になる", () => {
+  const quiz = createQuizService({ secret: SECRET, questionCount: 5 });
+  assert.equal(quiz.config.questionCount, 5);
+  assert.equal(quiz.config.answerTimeSecondsByQuestion.length, 5);
+});
+
+Deno.test("questionCountを省略すると通常の24問になる", () => {
+  const quiz = createQuizService({ secret: SECRET });
+  assert.equal(quiz.config.questionCount, 24);
+});
+
+Deno.test("questionCountが範囲外だとエラーになる", () => {
+  assert.throws(() => createQuizService({ secret: SECRET, questionCount: 0 }));
+  assert.throws(() => createQuizService({ secret: SECRET, questionCount: 25 }));
+  assert.throws(() => createQuizService({ secret: SECRET, questionCount: 1.5 }));
+});
