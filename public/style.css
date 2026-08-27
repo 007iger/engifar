@@ -391,7 +391,12 @@ a {
   z-index: 8;
   cursor: grabbing;
   scale: 1.08;
-  animation: none;
+  animation: room-avatar-panic .22s ease-in-out infinite;
+}
+
+@keyframes room-avatar-panic {
+  0%, 100% { rotate: -9deg; translate: -2px 0; scale: 1.1 .97; }
+  50% { rotate: 9deg; translate: 2px -1px; scale: .97 1.1; }
 }
 
 .room-field-avatar.is-reacting-shy {
@@ -468,6 +473,7 @@ a {
   .room-field-avatar.is-reacting-shy,
   .room-field-avatar.is-reacting-spin,
   .room-field-avatar.is-bounce,
+  .room-field-avatar.is-dragging,
   .room-field-avatar.is-dragging .room-field-avatar-sweat {
     animation: none;
   }
