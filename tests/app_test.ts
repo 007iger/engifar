@@ -10,7 +10,7 @@ import type {
   GameRepository,
   GameSessionSummary,
   MembershipResult,
-  ParticipantQuestionSelection,
+  ParticipantQuestionPlan,
   RoomDetail,
   RoomSummary,
   SessionResultSource,
@@ -31,6 +31,7 @@ const membership: MembershipResult = {
   participant: {
     id: "33333333-3333-4333-8333-333333333333",
     displayName: "テストユーザー",
+    crewColor: "#54d37c",
     role: "host",
     joinedAt: NOW,
   },
@@ -56,6 +57,7 @@ const session: GameSessionSummary = {
 
 class FakeRepository implements GameRepository {
   createdDisplayName: string | null = null;
+  createdCrewColor: string | null = null;
   joinedRoomCode: string | null = null;
   submittedOption: number | null = null;
   startedQuestionCount: number | null = null;
@@ -68,6 +70,7 @@ class FakeRepository implements GameRepository {
   resultParticipants: SessionResultSource["participants"] = [{
     participantId: membership.participant.id,
     displayName: membership.participant.displayName,
+    crewColor: membership.participant.crewColor,
     role: membership.participant.role,
     resultPublished: false,
     answers: [
@@ -80,12 +83,17 @@ class FakeRepository implements GameRepository {
     return Promise.resolve();
   }
 
-  createRoom(displayName: string): Promise<MembershipResult> {
+  questionPlanReadCount = 0;
+  sessionAuthenticationReadCount = 0;
+  sessionSnapshotReadCount = 0;
+
+  createRoom(displayName: string, crewColor: string): Promise<MembershipResult> {
     this.createdDisplayName = displayName;
+    this.createdCrewColor = crewColor;
     return Promise.resolve(membership);
   }
 
-  joinRoom(code: string, _displayName: string): Promise<MembershipResult> {
+  joinRoom(code: string, _displayName: string, _crewColor: string): Promise<MembershipResult> {
     this.joinedRoomCode = code;
     return Promise.resolve(membership);
   }
@@ -135,24 +143,32 @@ class FakeRepository implements GameRepository {
     _sessionId: string,
     accessToken: string,
   ): Promise<GameSessionSummary> {
+    this.sessionAuthenticationReadCount += 1;
     if (accessToken !== TOKEN) {
       throw new ApiError(403, "PARTICIPANT_REQUIRED", "A valid participant token is required");
     }
     return Promise.resolve(this.sessionForParticipant);
   }
 
-  getParticipantQuestionSelection(
+  getSessionSnapshot(): Promise<GameSessionSummary> {
+    this.sessionSnapshotReadCount += 1;
+    return Promise.resolve(this.sessionForParticipant);
+  }
+
+  getParticipantQuestionPlan(
     _sessionId: string,
     accessToken: string,
-    questionIndex: number,
-  ): Promise<ParticipantQuestionSelection> {
+  ): Promise<ParticipantQuestionPlan> {
+    this.questionPlanReadCount += 1;
     if (accessToken !== TOKEN) {
       throw new ApiError(403, "PARTICIPANT_REQUIRED", "Invalid participant token");
     }
-    const source = QUIZ_QUESTION_BANK[questionIndex];
     return Promise.resolve({
       participantId: membership.participant.id,
-      question: { ...source, choices: [...source.choices] },
+      questions: QUIZ_QUESTION_BANK.map((source) => ({
+        ...source,
+        choices: [...source.choices],
+      })),
     });
   }
 
@@ -280,14 +296,56 @@ Deno.test("GET /api/health reports a healthy database", async () => {
   assert.deepEqual(await response.json(), { status: "ok", database: "up" });
 });
 
+Deno.test("GET /api/health exposes database and question-plan metrics when configured", async () => {
+  const response = await createApp(new FakeRepository(), {
+    databaseMetrics: () => ({
+      queries: {
+        total: 12,
+        failed: 1,
+        inFlight: 0,
+        totalDurationMs: 45.5,
+        maxDurationMs: 8.2,
+        byOperation: {
+          select: 8,
+          insert: 1,
+          update: 1,
+          delete: 0,
+          transaction: 2,
+          other: 0,
+        },
+      },
+      pool: { totalConnections: 2, idleConnections: 1, waitingRequests: 0 },
+    }),
+  })(new Request("http://localhost/api/health"));
+
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.metrics.database.queries.total, 12);
+  assert.deepEqual(payload.metrics.questionPlanCache, {
+    hits: 0,
+    misses: 0,
+    entries: 0,
+    hitRate: 0,
+  });
+  assert.deepEqual(payload.metrics.sessionAuth, {
+    signedTokenHits: 0,
+    databaseFallbacks: 0,
+    hitRate: 0,
+  });
+});
+
 Deno.test("POST /api/rooms trims the display name", async () => {
   const repository = new FakeRepository();
   const response = await createApp(repository)(
-    jsonRequest("/api/rooms", "POST", { displayName: "  テストユーザー  " }),
+    jsonRequest("/api/rooms", "POST", {
+      displayName: "  テストユーザー  ",
+      crewColor: "#54D37C",
+    }),
   );
 
   assert.equal(response.status, 201);
   assert.equal(repository.createdDisplayName, "テストユーザー");
+  assert.equal(repository.createdCrewColor, "#54d37c");
   assert.equal((await response.json()).data.room.code, "ABC234");
 });
 
@@ -298,6 +356,15 @@ Deno.test("POST /api/rooms requires JSON", async () => {
 
   assert.equal(response.status, 415);
   assert.equal((await response.json()).error.code, "JSON_REQUIRED");
+});
+
+Deno.test("POST /api/rooms rejects an invalid crew color", async () => {
+  const response = await createApp(new FakeRepository())(
+    jsonRequest("/api/rooms", "POST", { displayName: "tester", crewColor: "red" }),
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, "INVALID_CREW_COLOR");
 });
 
 Deno.test("POST /api/rooms limits streamed JSON without Content-Length", async () => {
@@ -322,7 +389,10 @@ Deno.test("POST /api/rooms limits streamed JSON without Content-Length", async (
 Deno.test("joining a room normalizes its code", async () => {
   const repository = new FakeRepository();
   const response = await createApp(repository)(
-    jsonRequest("/api/rooms/abc234/participants", "POST", { displayName: "player" }),
+    jsonRequest("/api/rooms/abc234/participants", "POST", {
+      displayName: "player",
+      crewColor: "#5ca9ff",
+    }),
   );
 
   assert.equal(response.status, 201);
@@ -467,6 +537,7 @@ Deno.test("personal and team results are derived from all stored participant ans
     {
       participantId: secondParticipantId,
       displayName: "未回答ユーザー",
+      crewColor: "#5ca9ff",
       role: "player",
       resultPublished: false,
       answers: [],
@@ -501,6 +572,7 @@ Deno.test("the shared team result is identical for every requester", async () =>
   repository.resultParticipants.push({
     participantId: secondParticipantId,
     displayName: "別の回答者",
+    crewColor: "#5ca9ff",
     role: "player",
     resultPublished: false,
     answers: [{ questionIndex: 0, selectedOption: 1, responseTimeMs: 400 }],
@@ -536,6 +608,7 @@ Deno.test("other participants' results are private until they publish them", asy
   repository.resultParticipants.push({
     participantId: secondParticipantId,
     displayName: "非公開ユーザー",
+    crewColor: "#5ca9ff",
     role: "player",
     resultPublished: false,
     answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 400 }],
@@ -553,6 +626,7 @@ Deno.test("other participants' results are private until they publish them", asy
   assert.deepEqual(privateResult, {
     participantId: secondParticipantId,
     displayName: "非公開ユーザー",
+    crewColor: "#5ca9ff",
     role: "player",
     isRequester: false,
     published: false,
@@ -565,6 +639,7 @@ Deno.test("two-person team aggregates include every participant", async () => {
   repository.resultParticipants.push({
     participantId: "55555555-5555-4555-8555-555555555555",
     displayName: "公開ユーザー",
+    crewColor: "#5ca9ff",
     role: "player",
     resultPublished: true,
     answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 400 }],
@@ -591,6 +666,7 @@ Deno.test("team aggregates stay available while individual results remain privat
     {
       participantId: "55555555-5555-4555-8555-555555555555",
       displayName: "公開ユーザー",
+      crewColor: "#5ca9ff",
       role: "player",
       resultPublished: true,
       answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 400 }],
@@ -598,6 +674,7 @@ Deno.test("team aggregates stay available while individual results remain privat
     {
       participantId: "66666666-6666-4666-8666-666666666666",
       displayName: "非公開ユーザー",
+      crewColor: "#ff665f",
       role: "player",
       resultPublished: false,
       answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 500 }],
@@ -703,8 +780,24 @@ Deno.test("version 4 room quiz serves the participant's DB-selected question", a
   assert.equal(response.status, 200);
   assert.equal(started.question.id, QUIZ_QUESTION_BANK[0].id);
   assert.equal(started.question.category, QUIZ_QUESTION_BANK[0].category);
+  assert.equal(started.question.technology, QUIZ_QUESTION_BANK[0].technology);
   assert.equal(started.answerTimeSeconds, 15);
   assert.equal(Object.hasOwn(started.question, "answer"), false);
+
+  const gradeResponse = await app(jsonRequest(
+    `/api/sessions/${SESSION_ID}/quiz/questions/0/grade`,
+    "POST",
+    {
+      questionToken: started.questionToken,
+      sessionAuthToken: started.sessionAuthToken,
+      selectedOption: 0,
+    },
+    TOKEN,
+  ));
+  assert.equal(gradeResponse.status, 200);
+  assert.equal(repository.questionPlanReadCount, 1);
+  assert.equal(repository.sessionAuthenticationReadCount, 1);
+  assert.equal(repository.sessionSnapshotReadCount, 1);
 });
 
 Deno.test("answer option must be one of four zero-based indexes", async () => {

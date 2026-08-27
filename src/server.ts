@@ -1,6 +1,7 @@
 import { createApp } from "./app.ts";
 import { applyMigrations } from "./db/migrate.ts";
 import { createPool } from "./db/pool.ts";
+import { databaseMetricsSnapshot, startDatabaseMetricsLogger } from "./db/metrics.ts";
 import { PostgresGameRepository } from "./db/postgres_game_repository.ts";
 import { seedQuizQuestions } from "./db/seed_quiz_questions.ts";
 import { createQuizService } from "./quiz.ts";
@@ -21,11 +22,20 @@ export async function startServer(): Promise<Deno.HttpServer> {
         "QUIZ_TOKEN_SECRET is required so quiz tokens and choice order remain stable",
       );
     }
-    const quizService = createQuizService({ secret: quizTokenSecret });
+    // デモ発表などで問題数を短縮したい場合、QUIZ_QUESTION_COUNTを設定する(未設定なら通常の24問)。
+    const rawQuestionCount = Deno.env.get("QUIZ_QUESTION_COUNT");
+    const quizService = createQuizService({
+      secret: quizTokenSecret,
+      questionCount: rawQuestionCount === undefined ? undefined : Number(rawQuestionCount),
+    });
     startBroadcastChannel();
     startHeartbeatMonitor(repository);
     startRoomCleanupMonitor(repository);
-    return Deno.serve(createApp(repository, { quizService }));
+    startDatabaseMetricsLogger(pool);
+    return Deno.serve(createApp(repository, {
+      quizService,
+      databaseMetrics: () => databaseMetricsSnapshot(pool),
+    }));
   } catch (error) {
     await pool.end();
     throw error;

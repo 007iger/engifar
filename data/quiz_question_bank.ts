@@ -10,6 +10,7 @@ import securityQuestionData from "./quiz_questions/security.json" with { type: "
 export interface QuizQuestionSeed {
   id: string;
   category: string;
+  technology: string;
   difficulty: 1 | 2 | 3;
   weight: number;
   answerTimeSeconds: number;
@@ -198,6 +199,17 @@ export const QUIZ_QUESTION_BANK: readonly Readonly<QuizQuestionSeed>[] = Object.
       return Object.freeze({
         id: `bank-${categoryIndex + 1}-${id}`,
         category,
+        technology: category === "フロントエンド"
+          ? "Web"
+          : category === "バックエンド"
+          ? "TypeScript / Deno"
+          : category === "データベース"
+          ? "SQL / PostgreSQL"
+          : category === "API"
+          ? "HTTP"
+          : category === "インフラ"
+          ? "Infrastructure"
+          : "Web Security",
         difficulty,
         weight: difficulty,
         answerTimeSeconds: 15,

@@ -24,12 +24,18 @@ const NOW = "2026-08-24T00:00:00.000Z";
 
 const membership: MembershipResult = {
   room: { id: "room-1", code: "ABC234", status: "lobby", genre: "web", createdAt: NOW },
-  participant: { id: "participant-1", displayName: "テストユーザー", role: "host", joinedAt: NOW },
+  participant: {
+    id: "participant-1",
+    displayName: "テストユーザー",
+    crewColor: "#54d37c",
+    role: "host",
+    joinedAt: NOW,
+  },
   accessToken: TOKEN,
 };
 
 class FakeRepository implements GameRepository {
-  getParticipantQuestionSelection(): Promise<never> {
+  getParticipantQuestionPlan(): Promise<never> {
     return Promise.reject(new Error("No DB-selected question configured for this test"));
   }
   disconnectedParticipantIds: string[] = [];
@@ -68,6 +74,9 @@ class FakeRepository implements GameRepository {
     return Promise.reject(new Error("not used"));
   }
   getSessionForParticipant(): Promise<GameSessionSummary> {
+    return Promise.reject(new Error("not used"));
+  }
+  getSessionSnapshot(): Promise<GameSessionSummary> {
     return Promise.reject(new Error("not used"));
   }
   getSessionResultSource(): Promise<SessionResultSource> {

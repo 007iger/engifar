@@ -51,6 +51,7 @@ Deno.test("public JavaScript does not bundle quiz questions or answers", async (
 
 Deno.test("room controls call the shared room and session APIs", async () => {
   const source = await Deno.readTextFile("public/script.js");
+  const quizHtml = await Deno.readTextFile("public/quiz.html");
 
   assert.match(source, /["']\/api\/rooms["']/);
   assert.match(source, /\/participants`/);
@@ -59,6 +60,11 @@ Deno.test("room controls call the shared room and session APIs", async () => {
   assert.match(source, /new WebSocket\(url, \["engifar-v1", auth\.accessToken\]\)/);
   assert.match(source, /\/results`/);
   assert.match(source, /engifar-room-auth-v1/);
+  assert.match(source, /crewColor: fresh\.player\.color/);
+  assert.match(source, /participant\.crewColor/);
+  assert.match(source, /elements\.technology\.textContent = question\.technology/);
+  assert.match(source, /sessionAuthToken/);
+  assert.match(quizHtml, /id="question-technology"/);
   assert.doesNotMatch(source, /searchParams\.set\("token"/);
 });
 
@@ -146,7 +152,7 @@ Deno.test("result views are split and code questions preserve readable indentati
   }
   for (const page of ["index", "room", "quiz", "result", "card"]) {
     const html = await Deno.readTextFile(`public/${page}.html`);
-    assert.match(html, /style\.css\?v=20260826-flight-score/);
+    assert.match(html, /style\.css\?v=20260827-corner-logo/);
   }
 });
 
@@ -312,4 +318,11 @@ Deno.test("brand and home-screen icons are available on every page", async () =>
 
   const style = await Deno.readTextFile("public/style.css");
   assert.match(style, /\.brand-mark\s*\{[\s\S]*?border-radius: 10px;[\s\S]*?object-fit: cover;/);
+
+  const homeHtml = await Deno.readTextFile("public/index.html");
+  assert.match(homeHtml, /class="home-corner-logo"[\s\S]*?EngiFar_rogo\.svg/);
+  assert.match(
+    style,
+    /\.home-corner-logo\s*\{[\s\S]*?right:var\(--safe-right\);[\s\S]*?border-radius:14px;/,
+  );
 });

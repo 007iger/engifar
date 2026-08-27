@@ -221,6 +221,7 @@ Deno.test("quiz JSON validation rejects duplicate ids and malformed choices", ()
   const validQuestion = {
     id: "sample-question",
     category: "API",
+    technology: "HTTP",
     weight: 1,
     answerTimeSeconds: 10,
     instruction: "Choose one",
@@ -238,6 +239,33 @@ Deno.test("quiz JSON validation rejects duplicate ids and malformed choices", ()
   assert.throws(
     () => validateQuizQuestions([{ ...validQuestion, answerTimeSeconds: 0 }]),
     /invalid answerTimeSeconds/,
+  );
+});
+
+Deno.test("short-lived session auth tokens are bound to both session and bearer token", async () => {
+  let now = 1_000;
+  const service = createQuizService({
+    secret: "session-auth-test-secret-that-is-at-least-32-bytes",
+    now: () => now,
+  });
+  const token = await service.createSessionAuthToken("session-a", "participant-token-a");
+
+  assert.equal(
+    await service.isSessionAuthTokenValid(token, "session-a", "participant-token-a"),
+    true,
+  );
+  assert.equal(
+    await service.isSessionAuthTokenValid(token, "session-b", "participant-token-a"),
+    false,
+  );
+  assert.equal(
+    await service.isSessionAuthTokenValid(token, "session-a", "participant-token-b"),
+    false,
+  );
+  now += 60_001;
+  assert.equal(
+    await service.isSessionAuthTokenValid(token, "session-a", "participant-token-a"),
+    false,
   );
 });
 
@@ -337,4 +365,21 @@ Deno.test("database-selected questions are used for display, grading, and catego
     "インフラ",
     "セキュリティ",
   ]);
+});
+
+Deno.test("questionCountを指定すると短縮したデモ用の問題数になる", () => {
+  const quiz = createQuizService({ secret: SECRET, questionCount: 5 });
+  assert.equal(quiz.config.questionCount, 5);
+  assert.equal(quiz.config.answerTimeSecondsByQuestion.length, 5);
+});
+
+Deno.test("questionCountを省略すると通常の24問になる", () => {
+  const quiz = createQuizService({ secret: SECRET });
+  assert.equal(quiz.config.questionCount, 24);
+});
+
+Deno.test("questionCountが範囲外だとエラーになる", () => {
+  assert.throws(() => createQuizService({ secret: SECRET, questionCount: 0 }));
+  assert.throws(() => createQuizService({ secret: SECRET, questionCount: 25 }));
+  assert.throws(() => createQuizService({ secret: SECRET, questionCount: 1.5 }));
 });

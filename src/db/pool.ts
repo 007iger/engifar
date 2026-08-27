@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { instrumentDatabasePool } from "./metrics.ts";
 
 const DEFAULT_POOL_SIZE = 5;
 const MAX_POOL_SIZE = 20;
@@ -14,10 +15,12 @@ function poolSizeFromEnvironment(): number {
 export function createPool(): Pool {
   const connectionString = Deno.env.get("DATABASE_URL");
 
-  return new Pool({
-    ...(connectionString ? { connectionString } : {}),
-    max: poolSizeFromEnvironment(),
-    connectionTimeoutMillis: 5_000,
-    idleTimeoutMillis: 30_000,
-  });
+  return instrumentDatabasePool(
+    new Pool({
+      ...(connectionString ? { connectionString } : {}),
+      max: poolSizeFromEnvironment(),
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 30_000,
+    }),
+  );
 }
