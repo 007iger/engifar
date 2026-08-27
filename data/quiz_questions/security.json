@@ -2,6 +2,7 @@
   {
     "id": "security-https",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "answerTimeSeconds": 15,
     "instruction": "ログイン情報を通信途中で読み取られにくい形で送ります。空欄に入るスキームを選んでください。",
@@ -19,6 +20,7 @@
   {
     "id": "security-gitignore-env",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "answerTimeSeconds": 15,
     "instruction": "APIキーを書いた.envがコミットされないようにします。.gitignoreへ書き足す行を選んでください。",
@@ -36,6 +38,7 @@
   {
     "id": "security-cookie-http-only",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "answerTimeSeconds": 15,
     "instruction": "セッションCookieをJavaScriptから読めなくします。空欄に入る属性を選んでください。",
@@ -53,6 +56,7 @@
   {
     "id": "security-bcrypt-compare",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "instruction": "入力されたパスワードが保存済みbcryptハッシュと一致するか確認します。空欄を選んでください。",
     "question": "const ok = await bcrypt.＿＿＿(password, passwordHash);",
@@ -70,6 +74,7 @@
   {
     "id": "security-cookie-path",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "instruction": "セッションCookieをサイト内のすべてのパスへ送信します。空欄に入る属性を選んでください。",
     "question": "Set-Cookie: session=abc; ＿＿＿; HttpOnly; Secure",
@@ -87,6 +92,7 @@
   {
     "id": "security-cookie-secure",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "instruction": "セッションCookieをHTTPS通信時だけ送信するようにします。追加する属性を選んでください。",
     "question": "Set-Cookie: session=abc; Path=/; HttpOnly; ＿＿＿",
@@ -104,6 +110,7 @@
   {
     "id": "security-cookie-samesite",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "instruction": "一般的なWebアプリでクロスサイト送信を抑えつつ通常のリンク遷移を扱いやすくします。空欄を選んでください。",
     "question": "Set-Cookie: session=abc; HttpOnly; Secure; SameSite=＿＿＿",
@@ -121,6 +128,7 @@
   {
     "id": "security-authorization-check",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "instruction": "管理者だけが実行できる処理です。一般ユーザーなら処理を拒否します。空欄に入るステータスコードを選んでください。",
     "question": "if (user.role !== 'admin') {\n  return new Response('Forbidden', { status: ＿＿＿ });\n}",
@@ -138,6 +146,7 @@
   {
     "id": "security-secret-env",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "instruction": "APIキーをソースコードへ直接書かず環境変数から取得します。空欄を選んでください。",
     "question": "const apiKey = Deno.env.＿＿＿('API_KEY');",
@@ -155,6 +164,7 @@
   {
     "id": "security-no-password-log",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "instruction": "ログイン処理のログへ秘密情報を残さないようにします。ログに含めるべきでない値を選んでください。",
     "question": "console.log({ userId, ＿＿＿ });",
@@ -172,6 +182,7 @@
   {
     "id": "security-csp-header",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 2,
     "instruction": "ブラウザが読み込めるコンテンツの出所を制限するためCSPを返します。空欄に入るヘッダー名を選んでください。",
     "question": "headers: {\n  '＿＿＿': \"default-src 'self'\"\n}",
@@ -189,6 +200,7 @@
   {
     "id": "security-csp-self",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 2,
     "instruction": "CSPで基本的に同一オリジンからのリソースだけを許可します。空欄を選んでください。",
     "question": "Content-Security-Policy: default-src ＿＿＿",
@@ -206,6 +218,7 @@
   {
     "id": "security-nosniff",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 2,
     "instruction": "ブラウザによるMIMEタイプの推測を防ぎます。空欄に入る値を選んでください。",
     "question": "X-Content-Type-Options: ＿＿＿",
@@ -223,6 +236,7 @@
   {
     "id": "security-rate-limit-status",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 2,
     "instruction": "短時間にリクエストが多すぎるためレート制限を適用します。返すステータスコードを選んでください。",
     "question": "return new Response('Too Many Requests', { status: ＿＿＿ });",
@@ -240,6 +254,7 @@
   {
     "id": "security-payload-too-large",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 2,
     "instruction": "アップロードされたリクエスト本文が許可サイズを超えています。返すステータスコードを選んでください。",
     "question": "return new Response('Content Too Large', { status: ＿＿＿ });",
@@ -257,6 +272,7 @@
   {
     "id": "security-random-token",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 3,
     "instruction": "予測されにくいランダム値を生成してトークン材料に使います。空欄を選んでください。",
     "question": "const bytes = new Uint8Array(32);\ncrypto.＿＿＿(bytes);",
@@ -274,6 +290,7 @@
   {
     "id": "security-logout-cookie",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 3,
     "instruction": "ログアウト時にsession Cookieをブラウザから削除させます。空欄に入る設定を選んでください。",
     "question": "Set-Cookie: session=; Path=/; HttpOnly; Secure; ＿＿＿",
@@ -291,6 +308,7 @@
   {
     "id": "security-generic-login-error",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "ログインに失敗した理由を攻撃者に絞り込ませないようにします。返すメッセージを選んでください。",

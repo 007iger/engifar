@@ -2,6 +2,7 @@
   {
     "id": "backend-deno-serve",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 1,
     "weight": 1,
     "answerTimeSeconds": 15,
@@ -14,6 +15,7 @@
   {
     "id": "backend-await",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 1,
     "weight": 1,
     "answerTimeSeconds": 15,
@@ -26,6 +28,7 @@
   {
     "id": "backend-json-stringify",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 1,
     "weight": 1,
     "answerTimeSeconds": 15,
@@ -38,6 +41,7 @@
   {
     "id": "backend-read-text-file",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 1,
     "weight": 1,
     "answerTimeSeconds": 15,
@@ -50,6 +54,7 @@
   {
     "id": "backend-env-get",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 1,
     "weight": 1,
     "answerTimeSeconds": 15,
@@ -62,6 +67,7 @@
   {
     "id": "backend-url-pathname",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 1,
     "weight": 1,
     "answerTimeSeconds": 15,
@@ -74,6 +80,7 @@
   {
     "id": "backend-request-json",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 1,
     "weight": 1,
     "answerTimeSeconds": 15,
@@ -86,6 +93,7 @@
   {
     "id": "backend-input-validation",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 1,
     "weight": 1,
     "answerTimeSeconds": 15,
@@ -98,6 +106,7 @@
   {
     "id": "backend-response-status",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 1,
     "weight": 1,
     "answerTimeSeconds": 15,
@@ -110,6 +119,7 @@
   {
     "id": "backend-json-parse",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 1,
     "weight": 1,
     "answerTimeSeconds": 15,
@@ -122,6 +132,7 @@
   {
     "id": "backend-json-response-header",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 2,
     "weight": 2,
     "answerTimeSeconds": 15,
@@ -134,6 +145,7 @@
   {
     "id": "backend-try-catch",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 2,
     "weight": 2,
     "answerTimeSeconds": 15,
@@ -146,6 +158,7 @@
   {
     "id": "backend-throw-error",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 2,
     "weight": 2,
     "answerTimeSeconds": 15,
@@ -158,6 +171,7 @@
   {
     "id": "backend-random-uuid",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 2,
     "weight": 2,
     "answerTimeSeconds": 15,
@@ -170,6 +184,7 @@
   {
     "id": "backend-promise-all",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 2,
     "weight": 2,
     "answerTimeSeconds": 15,
@@ -182,6 +197,7 @@
   {
     "id": "backend-fetch-timeout",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 3,
     "weight": 3,
     "answerTimeSeconds": 15,
@@ -194,6 +210,7 @@
   {
     "id": "backend-websocket-upgrade",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 3,
     "weight": 3,
     "answerTimeSeconds": 15,
@@ -206,6 +223,7 @@
   {
     "id": "backend-heartbeat-interval",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "difficulty": 3,
     "weight": 3,
     "answerTimeSeconds": 15,

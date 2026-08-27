@@ -5,8 +5,9 @@
 
 ## バックエンドの現在地
 
-- PostgreSQLの7ドメインテーブル（`room`、`participant`、`game_session`、
-  `session_participant`、`answer`、`quiz_question`、`session_participant_question`）
+- PostgreSQLの8ドメインテーブル（`room`、`participant`、`game_session`、
+  `session_participant`、`answer`、`quiz_question`、`quiz_question_revision`、
+  `session_participant_question`）
 - 部屋作成、部屋参加、ロビー情報取得
 - ルーム画面からの実ルーム作成・招待コード参加・参加者一覧同期
 - ホストによるゲーム開始、次の問題開始、ゲーム終了
@@ -65,7 +66,7 @@ JSONレスポンスは成功時に `{ "data": ... }`、失敗時に
 
 | Method | Path | 用途 | 認証 |
 | --- | --- | --- | --- |
-| `GET` | `/api/health` | サーバー・DB確認 | なし |
+| `GET` | `/api/health` | サーバー・DB確認とDBメトリクス | なし |
 | `GET` | `/api/quiz/config` | 問題数・制限時間を取得 | なし |
 | `POST` | `/api/quiz/attempts` | 受験用の署名付きトークンを発行 | なし |
 | `POST` | `/api/quiz/questions/:index/start` | 問題を取得（正解・解説は含まない） | 受験トークン |
@@ -93,16 +94,32 @@ JSONレスポンスは成功時に `{ "data": ... }`、失敗時に
 `data/quiz_question_bank.ts`から問題マスタを同期します。精査済みのカテゴリ別問題は
 `data/quiz_questions/`のJSONから読み込みます。
 6カテゴリーごとに初級10問・中級5問・上級3問（合計108問）を保存します。
-各問題の回答時間は15秒です。問題ID、回答時間（1〜300秒）、
+各問題には画面表示用の技術・言語名（`technology`）を持たせています。
+回答時間は15秒です。問題ID、回答時間（1〜300秒）、
 4択、正解番号などを検証し、問題開始時のレスポンスには正解を含めず、
 HMAC署名された問題トークンを使って、回答時間が終了した後にだけ採点結果と解説を返します。
 トークンは問題順も検証するため、後続問題へ直接スキップできません。
 
 セッション開始時、参加者ごとに各カテゴリーから初級1問・中級2問・上級1問をDBでランダム抽選し、
 `session_participant_question`へ全24問の並びを保存します。再接続や採点時も保存済みの並びを使います。
+開始・採点APIが1問ごとに割当問題をDB取得しないよう、参加者の24問を最初の1回で一括取得し、
+Denoインスタンス内で15分間（最大1,000件）保持します。キャッシュキーには参加トークン本体ではなく
+SHA-256ダイジェストを使い、ブラウザへ返す現在問には正解・解説を含めません。
+問題マスタを修正した場合は`quiz_question_revision`へ新しい変更不能な版を追加し、
+`session_participant_question.question_revision_id`はセッション開始時の版を参照し続けます。
+このため、問題文・選択肢・正答を後から変更しても、進行中・完了済みセッションの採点は変わりません。
 問題セットはセッションの`choice_order_version`と一緒に固定し、v1/v2は
 `data/quiz_questions.v1.json`、v3は`data/quiz_questions.json`、v4以降はDB問題マスタを使うため、
 既存セッションの採点結果は変わりません。
+
+初回セッション取得時には、セッションIDとBearerトークンのSHA-256を結び付けた60秒有効の
+HMAC署名トークンを返します。有効期間中の問題開始・採点では参加者テーブルとの認証JOINを省略し、
+ゲーム状態だけを取得します。期限切れ・改ざん・別参加者のトークンは従来のDB認証へフォールバックし、
+成功時だけ新しい短寿命トークンを発行します。回答保存とホスト操作は引き続き毎回DB認証します。
+
+参加時に選んだクルーカラーは`participant.crew_color`へ保存し、ゲーム開始時に
+`session_participant.crew_color_snapshot`へ固定します。ロビーの参加者一覧と`player_joined`イベントは
+この保存値を返すため、別ブラウザでも参加者本人が選んだ色を表示できます。
 
 ```json
 {
@@ -130,6 +147,11 @@ WebSocket再接続、タブ再表示、状態不整合時と60秒間隔の安全
 検出し、進行状態を自己修復します。
 タブが非表示の間は復旧用の取得を停止し、非表示状態が60秒続いた場合はWebSocketを閉じて退出します。
 その後タブを再表示するとホーム画面へ戻ります。
+
+各DenoインスタンスはSQL実行数・失敗数・実行時間・操作種別と、Poolの総接続数・アイドル数・
+待機要求数を計測します。`/api/health`の`metrics.database`で現在値、
+`metrics.questionPlanCache`で問題一括キャッシュのヒット率を確認でき、60秒ごとに
+`type: "database_metrics"`のJSONログも出力します。SQL本文やパラメータは出力しません。
 
 個人結果は本人だけが完全な内容を取得でき、明示的に公開した参加者の結果だけを他のメンバーへ
 返します。チームの出力・安全性・分野別スコアは全員の平均として常に共有し、全員が同じ到達距離と

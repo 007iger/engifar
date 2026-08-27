@@ -14,6 +14,7 @@ import {
   decorateCrewAvatars,
   renderRoomAvatarField,
 } from "./crew-avatars.js";
+import { boardRocket } from "./rocket-boarding.js";
 import { createQuizCrewReaction } from "./quiz-crew-reaction.js";
 import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
 
@@ -82,7 +83,8 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       roomId: membership.room.id,
       accessToken: membership.accessToken,
       participantId: membership.participant.id,
-      role: membership.participant.role
+      role: membership.participant.role,
+      crewColor: membership.participant.crewColor
     };
     globalThis.sessionStorage.setItem(ROOM_AUTH_STORAGE_KEY, JSON.stringify(value));
     return value;
@@ -538,7 +540,10 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           : `/api/rooms/${encodeURIComponent(requestedCode)}/participants`;
         const membership = await requestApi(path, {
           method: "POST",
-          body: JSON.stringify({ displayName: fresh.player.name })
+          body: JSON.stringify({
+            displayName: fresh.player.name,
+            crewColor: fresh.player.color
+          })
         });
         saveRoomAuth(membership);
         fresh.room = {
@@ -610,29 +615,27 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       return;
     }
 
-    const crewColors = ["#54d37c", "#5ca9ff", "#f5cf4b", "#ff665f", "#b889ff", "#62e4ec"];
     let enteredQuiz = false;
     let refreshing = false;
     let avatarSignature = "";
     let participants = [];
 
-    function colorFor(participant, index) {
-      if (participant.id === auth.participantId) return state.player.color;
-      let hash = 0;
-      for (const character of participant.id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-      return crewColors[(hash + index) % crewColors.length];
+    function colorFor(participant) {
+      if (/^#[0-9a-f]{6}$/i.test(participant.crewColor || "")) return participant.crewColor;
+      if (participant.id === auth.participantId) return auth.crewColor || state.player.color;
+      return "#54d37c";
     }
 
     function renderParticipants(participantList) {
       playerList.replaceChildren();
-      participantList.forEach((participant, index) => {
+      participantList.forEach((participant) => {
         const card = document.createElement("div");
         card.className = "room-player-card";
         if (participant.id === auth.participantId) card.classList.add("is-you");
 
         const avatar = document.createElement("span");
         avatar.className = "crew-avatar crew-avatar--small";
-        avatar.style.setProperty("--crew-color", colorFor(participant, index));
+        avatar.style.setProperty("--crew-color", colorFor(participant));
         avatar.setAttribute("aria-hidden", "true");
         avatar.append(document.createElement("i"));
         decorateCrewAvatar(avatar);
@@ -650,10 +653,10 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
         card.append(avatar, copy, badge);
         playerList.append(card);
       });
-      const fieldParticipants = participantList.map((participant, index) => ({
+      const fieldParticipants = participantList.map((participant) => ({
         id: participant.id,
         name: participant.displayName,
-        color: colorFor(participant, index),
+        color: colorFor(participant),
         isYou: participant.id === auth.participantId,
       }));
       const nextAvatarSignature = JSON.stringify(fieldParticipants);
@@ -731,6 +734,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           const participant = {
             id: event.participantId,
             displayName: event.displayName,
+            crewColor: event.crewColor,
             role: event.role
           };
           const existingIndex = participants.findIndex((item) => item.id === participant.id);
@@ -895,6 +899,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
   async function initMultiplayerQuiz(elements, auth) {
     const sessionId = state.room.sessionId;
     let currentSession = null;
+    let sessionAuthToken = null;
     let currentRenderedIndex = null;
     let currentQuestionToken = null;
     let reviewingIndex = null;
@@ -994,6 +999,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
             headers: bearerHeaders(auth),
             body: JSON.stringify({
               questionToken,
+              sessionAuthToken,
               selectedOption: Number.isInteger(state.quiz.answers[index])
                 ? state.quiz.answers[index]
                 : null
@@ -1006,6 +1012,8 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           await new Promise((resolve) => globalThis.setTimeout(resolve, retryDelays[attempt]));
         }
       }
+
+      sessionAuthToken = result.sessionAuthToken || sessionAuthToken;
 
       const selectedChoice = Number.isInteger(state.quiz.answers[index])
         ? state.quiz.answers[index]
@@ -1052,9 +1060,13 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           {
             method: "POST",
             headers: bearerHeaders(auth),
-            body: JSON.stringify({ progressToken: state.quiz.progressToken })
+            body: JSON.stringify({
+              progressToken: state.quiz.progressToken,
+              sessionAuthToken
+            })
           }
         );
+        sessionAuthToken = start.sessionAuthToken || sessionAuthToken;
         await gradeQuestion(index, start.questionToken, false);
       }
     }
@@ -1127,10 +1139,15 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
           {
             method: "POST",
             headers: bearerHeaders(auth),
-            body: JSON.stringify({ progressToken: state.quiz.progressToken })
+            body: JSON.stringify({
+              progressToken: state.quiz.progressToken,
+              sessionAuthToken
+            })
           }
         );
         if (token !== phaseToken) return;
+
+        sessionAuthToken = start.sessionAuthToken || sessionAuthToken;
 
         const question = start.question;
         const selectedChoice = Number.isInteger(state.quiz.answers[index])
@@ -1140,6 +1157,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
         currentQuestionToken = start.questionToken;
         elements.current.textContent = String(index + 1).padStart(2, "0");
         elements.category.textContent = question.category;
+        elements.technology.textContent = question.technology;
         elements.difficulty.textContent = difficultyLabel(question.weight);
         elements.progress.style.width = `${((index + 1) / quizConfig.questionCount) * 100}%`;
         elements.timerLabel.textContent = "回答";
@@ -1253,6 +1271,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
             const session = await requestApi(`/api/sessions/${encodeURIComponent(sessionId)}`, {
               headers: bearerHeaders(auth)
             });
+            sessionAuthToken = session.sessionAuthToken || sessionAuthToken;
             currentSession = session;
             if (session.questionCount !== quizConfig.questionCount) {
               throw new Error("ルームとクイズの問題数が一致していません。ルームを作り直してください。");
@@ -1380,6 +1399,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       current: document.querySelector("#question-current"),
       total: document.querySelector("#question-total"),
       category: document.querySelector("#question-category"),
+      technology: document.querySelector("#question-technology"),
       difficulty: document.querySelector("#question-difficulty"),
       progress: document.querySelector("#quiz-progress"),
       timer: document.querySelector("#timer-dial"),
@@ -1623,6 +1643,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       questionToken = start.questionToken;
       elements.current.textContent = String(questionIndex + 1).padStart(2, "0");
       elements.category.textContent = question.category;
+      elements.technology.textContent = question.technology;
       elements.difficulty.textContent = difficultyLabel(question.weight);
       elements.progress.style.width = `${((questionIndex + 1) / quizConfig.questionCount) * 100}%`;
       elements.timerLabel.textContent = "回答";
@@ -1676,7 +1697,8 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     const elements = {
       setup: document.querySelector("#screenSetup"), launch: document.querySelector("#screenLaunch"), result: document.querySelector("#screenResult"),
       launchButton: document.querySelector("#launchBtn"), bots: document.querySelector("#botsRunway"), rocket: document.querySelector("#rocketWrap"),
-      hatch: document.querySelector("#rlHatch"), sky: document.querySelector("#rlSky"), ground: document.querySelector("#rlGroundLine"),
+      hatch: document.querySelector("#rlHatch"), topHatchLid: document.querySelector("#rlTopHatchLid"),
+      rocketSvg: document.querySelector("#rocketSvg"), sky: document.querySelector("#rlSky"), ground: document.querySelector("#rlGroundLine"),
       approach: document.querySelector("#approachBody"), countdown: document.querySelector("#rlCountdown"), caption: document.querySelector("#flightCaption"),
       resultBg: document.querySelector("#resultBg"), resultTitle: document.querySelector("#resultTitle"), resultIllustration: document.querySelector("#resultIllustration"),
       impactAltitude: document.querySelector("#impactAltitude"), distanceLabel: document.querySelector("#rocket-distance-label"),
@@ -1687,8 +1709,6 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     const score = flightScoreFor(outcome);
     const rank = getFlightRank(score);
     const resultContent = globalThis.ROCKET_LAUNCH_RESULTS || {};
-    const botColors = ["oklch(0.62 0.20 24)", "oklch(0.62 0.17 253)", "oklch(0.83 0.16 93)", state.player.color];
-    const botSpots = [{ left: "28%", top: "78%" }, { left: "38%", top: "84%" }, { left: "60%", top: "84%" }, { left: "71%", top: "77%" }];
     const captions = { ground: "発射準備", sky: "上空へ", "atmosphere-edge": "大気圏付近", space: "宇宙空間", sea: "着水" };
     let running = false;
 
@@ -1700,17 +1720,29 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     });
     const setSkyLeg = (leg) => elements.sky.querySelectorAll(".rl-sky-layer").forEach((layer) => layer.classList.toggle("is-visible", layer.dataset.leg === leg));
     const setCaption = (text) => { elements.caption.textContent = text; elements.caption.classList.toggle("is-visible", Boolean(text)); };
-    const robotSvg = (color) => `<svg class="bot-svg" viewBox="0 0 100 130" role="img" aria-hidden="true"><ellipse cx="50" cy="118" rx="24" ry="7" fill="${color}" opacity="0.3"/><line x1="50" y1="10" x2="50" y2="24" stroke="${color}" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="8" r="6" fill="oklch(0.85 0.1 202)"/><rect x="20" y="22" width="60" height="76" rx="30" fill="${color}" stroke="oklch(0.2 0.02 260 / 0.25)" stroke-width="2"/><rect x="32" y="42" width="36" height="26" rx="12" fill="oklch(0.97 0.006 260)"/><circle cx="43" cy="55" r="4" fill="oklch(0.22 0.03 262)"/><circle cx="57" cy="55" r="4" fill="oklch(0.22 0.03 262)"/></svg>`;
 
-    async function boardBots() {
-      elements.bots.innerHTML = "";
-      const bots = botSpots.map((spot, index) => {
-        const bot = document.createElement("div");
-        bot.className = "rl-runway-bot"; bot.style.left = spot.left; bot.style.top = spot.top; bot.innerHTML = robotSvg(botColors[index]); elements.bots.append(bot); return bot;
+    function boardingParticipants() {
+      const roster = authoritativeResults?.participants;
+      if (Array.isArray(roster) && roster.length > 0) {
+        return roster.map((participant) => ({
+          id: participant.participantId,
+          name: participant.displayName,
+          color: /^#[0-9a-f]{6}$/i.test(participant.crewColor || "") ? participant.crewColor : "#54d37c",
+          isYou: Boolean(participant.isRequester),
+        }));
+      }
+      return [{ id: "solo", name: state.player.name, color: state.player.color, isYou: true }];
+    }
+
+    async function boardCrew() {
+      await boardRocket({
+        container: elements.bots,
+        rocketSvg: elements.rocketSvg,
+        doorEl: elements.hatch,
+        topHatchLid: elements.topHatchLid,
+        groundEl: elements.ground,
+        participants: boardingParticipants(),
       });
-      await wait(120);
-      for (const bot of bots) { bot.style.left = "50%"; bot.style.top = "57%"; await wait(160); bot.classList.add("is-boarding"); }
-      await wait(300); elements.hatch.classList.add("is-open"); await wait(150); elements.hatch.classList.remove("is-open"); elements.bots.innerHTML = "";
     }
     async function bounceRocket() { elements.rocket.classList.add("is-bouncing"); await wait(700); elements.rocket.classList.remove("is-bouncing"); }
     async function igniteRocket() {
@@ -1750,7 +1782,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     }
     async function runLaunchSequence() {
       if (running) return; running = true; showScreen(elements.launch); setSkyLeg("ground"); elements.ground.classList.remove("is-hidden"); elements.rocket.className = "rl-rocket-wrap"; elements.approach.classList.remove("is-visible"); setCaption("");
-      await boardBots(); await bounceRocket(); await igniteRocket(); await liftoffRocket(); await flyThrough(); showResult(); running = false;
+      await boardCrew(); await bounceRocket(); await igniteRocket(); await liftoffRocket(); await flyThrough(); showResult(); running = false;
     }
     if (state.outcome) showResult();
     else elements.launchButton.addEventListener("click", runLaunchSequence);
@@ -2474,6 +2506,17 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
   if (page === "home") initHome();
   else if (page === "room") initRoom();
   else if (page === "quiz") void initQuiz();
-  else if (["rocket", "result", "card"].includes(page)) void initAuthoritativeResultPage();
+  else if (["rocket", "result", "card"].includes(page)) {
+    // quiz.htmlは自前でquizConfigを取得済みだが、rocket/result/cardは直接開かれることもあるため、
+    // requireMetrics()の判定(questionCountの比較)が既定値(24)のままにならないようここで取得する。
+    void (async () => {
+      try {
+        quizConfig = Object.freeze(await requestApi("/api/quiz/config"));
+      } catch {
+        // 取得に失敗しても既定値のまま続行し、requireMetrics側のフォールバックに委ねる。
+      }
+      await initAuthoritativeResultPage();
+    })();
+  }
   if (page === "home" || page === "room") initGuide();
 })();

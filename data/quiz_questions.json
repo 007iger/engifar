@@ -2,6 +2,7 @@
   {
     "id": "frontend-flex-space-between",
     "category": "フロントエンド",
+    "technology": "CSS",
     "weight": 2,
     "answerTimeSeconds": 15,
     "instruction": "カードを横並びにして、余った幅を均等に空けます。空欄に入るdisplayの値を選んでください。",
@@ -13,6 +14,7 @@
   {
     "id": "frontend-prevent-default",
     "category": "フロントエンド",
+    "technology": "JavaScript",
     "weight": 2,
     "answerTimeSeconds": 15,
     "instruction": "フォーム送信でページが再読み込みされるのを止めます。空欄に入るメソッド名を選んでください。",
@@ -24,6 +26,7 @@
   {
     "id": "frontend-media-min-width",
     "category": "フロントエンド",
+    "technology": "CSS",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "画面幅が768px以上のときだけ2列にします。空欄に入るメディア特性を選んでください。",
@@ -35,6 +38,7 @@
   {
     "id": "frontend-object-fit-cover",
     "category": "フロントエンド",
+    "technology": "JavaScript",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "サムネイル枠を縦横比を保ったまま埋め、はみ出した部分は切り取ります。空欄に入る値を選んでください。",
@@ -46,6 +50,7 @@
   {
     "id": "backend-deno-env-get",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "weight": 1,
     "answerTimeSeconds": 15,
     "instruction": "環境変数DATABASE_URLの値をDenoで読み取ります。空欄に入るメソッド名を選んでください。",
@@ -57,6 +62,7 @@
   {
     "id": "backend-finally",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "weight": 2,
     "answerTimeSeconds": 15,
     "instruction": "エラーが起きても起きなくても、最後に必ず接続を閉じます。空欄に入るキーワードを選んでください。",
@@ -68,6 +74,7 @@
   {
     "id": "backend-promise-all",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "3つのAPI呼び出しを同時に走らせ、すべての完了を待ちます。空欄に入るメソッド名を選んでください。",
@@ -79,6 +86,7 @@
   {
     "id": "backend-abort-controller",
     "category": "バックエンド",
+    "technology": "TypeScript / Deno",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "外部APIの応答が3秒を超えたらfetchを打ち切ります。空欄に入るクラス名を選んでください。",
@@ -90,6 +98,7 @@
   {
     "id": "database-inner-join",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 2,
     "answerTimeSeconds": 15,
     "instruction": "usersとordersをuser_idでつなぎ、両方にそろっている行だけを取ります。空欄に入る結合を選んでください。",
@@ -101,6 +110,7 @@
   {
     "id": "database-limit",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 2,
     "answerTimeSeconds": 15,
     "instruction": "注文を新しい順に並べ、先頭の10件だけを取ります。空欄に入るキーワードを選んでください。",
@@ -112,6 +122,7 @@
   {
     "id": "database-unique",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "同じメールアドレスの行が2件登録されるのを防ぎます。列に付ける制約を選んでください。",
@@ -123,6 +134,7 @@
   {
     "id": "database-commit",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "2つのUPDATEが両方成功したときだけ変更を確定させます。空欄に入る命令を選んでください。",
@@ -134,6 +146,7 @@
   {
     "id": "api-content-type",
     "category": "API",
+    "technology": "HTTP",
     "weight": 2,
     "answerTimeSeconds": 15,
     "instruction": "JSONを送るPOSTリクエストに、本文の形式を伝えるヘッダーを付けます。空欄に入るヘッダー名を選んでください。",
@@ -145,6 +158,7 @@
   {
     "id": "api-status-404",
     "category": "API",
+    "technology": "HTTP",
     "weight": 2,
     "answerTimeSeconds": 15,
     "instruction": "指定されたIDのユーザーが存在しなかったときに返すHTTPステータスを選んでください。",
@@ -156,6 +170,7 @@
   {
     "id": "api-put",
     "category": "API",
+    "technology": "HTTP",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "id=7のユーザー情報を丸ごと置き換えます。何度送っても同じ結果になるHTTPメソッドを選んでください。",
@@ -167,6 +182,7 @@
   {
     "id": "api-cors-origin",
     "category": "API",
+    "technology": "HTTP",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "別オリジンのフロントからこのAPIを呼べるようにします。サーバーが返すヘッダー名を選んでください。",
@@ -183,6 +199,7 @@
   {
     "id": "infra-dns-a-record",
     "category": "インフラ",
+    "technology": "DNS",
     "weight": 2,
     "answerTimeSeconds": 15,
     "instruction": "ドメイン名をIPv4アドレスへ対応づけます。空欄に入るDNSレコード種別を選んでください。",
@@ -194,6 +211,7 @@
   {
     "id": "infra-docker-publish-port",
     "category": "インフラ",
+    "technology": "Dockerfile",
     "weight": 2,
     "answerTimeSeconds": 15,
     "instruction": "コンテナの8000番ポートを、手元の3000番から開けるようにします。空欄に入るオプションを選んでください。",
@@ -205,6 +223,7 @@
   {
     "id": "infra-docker-copy-dependencies",
     "category": "インフラ",
+    "technology": "Dockerfile",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "ソースを直すたびに依存のインストールをやり直さずに済むDockerfileにします。空欄で先にコピーするものを選んでください。",
@@ -216,6 +235,7 @@
   {
     "id": "infra-nginx-proxy-pass",
     "category": "インフラ",
+    "technology": "Nginx",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "/apiへのリクエストをappコンテナの8000番ポートへ転送します。空欄に入るNginxの命令を選んでください。",
@@ -227,6 +247,7 @@
   {
     "id": "security-https",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "answerTimeSeconds": 15,
     "instruction": "ログイン情報を通信途中で読み取られにくい形で送ります。空欄に入るスキームを選んでください。",
@@ -238,6 +259,7 @@
   {
     "id": "security-gitignore-env",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 1,
     "answerTimeSeconds": 15,
     "instruction": "APIキーを書いた.envがコミットされないようにします。.gitignoreへ書き足す行を選んでください。",
@@ -249,6 +271,7 @@
   {
     "id": "security-cookie-http-only",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "セッションCookieをJavaScriptから読めなくします。空欄に入る属性を選んでください。",
@@ -260,6 +283,7 @@
   {
     "id": "security-generic-login-error",
     "category": "セキュリティ",
+    "technology": "Web Security",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "ログインに失敗した理由を攻撃者に絞り込ませないようにします。返すメッセージを選んでください。",

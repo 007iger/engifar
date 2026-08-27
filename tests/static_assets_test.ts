@@ -51,6 +51,7 @@ Deno.test("public JavaScript does not bundle quiz questions or answers", async (
 
 Deno.test("room controls call the shared room and session APIs", async () => {
   const source = await Deno.readTextFile("public/script.js");
+  const quizHtml = await Deno.readTextFile("public/quiz.html");
 
   assert.match(source, /["']\/api\/rooms["']/);
   assert.match(source, /\/participants`/);
@@ -59,6 +60,11 @@ Deno.test("room controls call the shared room and session APIs", async () => {
   assert.match(source, /new WebSocket\(url, \["engifar-v1", auth\.accessToken\]\)/);
   assert.match(source, /\/results`/);
   assert.match(source, /engifar-room-auth-v1/);
+  assert.match(source, /crewColor: fresh\.player\.color/);
+  assert.match(source, /participant\.crewColor/);
+  assert.match(source, /elements\.technology\.textContent = question\.technology/);
+  assert.match(source, /sessionAuthToken/);
+  assert.match(quizHtml, /id="question-technology"/);
   assert.doesNotMatch(source, /searchParams\.set\("token"/);
 });
 
@@ -146,7 +152,7 @@ Deno.test("result views are split and code questions preserve readable indentati
   }
   for (const page of ["index", "room", "quiz", "result", "card"]) {
     const html = await Deno.readTextFile(`public/${page}.html`);
-    assert.match(html, /style\.css\?v=20260826-flight-score/);
+    assert.match(html, /style\.css\?v=20260827-corner-logo/);
   }
 });
 
@@ -252,4 +258,71 @@ Deno.test("tutorial assets are available from the public assets route", async ()
     assert.match(response.headers.get("content-type") ?? "", /^image\/png\b/);
     assert.ok((await response.arrayBuffer()).byteLength > 0);
   }
+});
+
+Deno.test("brand and home-screen icons are available on every page", async () => {
+  const logoResponse = await responseFor("/assets/rogo/EngiFar_rogo.svg");
+  assert.equal(logoResponse.status, 200);
+  assert.match(logoResponse.headers.get("content-type") ?? "", /^image\/svg\+xml\b/);
+
+  const expectedPngSizes = new Map([
+    ["/apple-touch-icon.png", 180],
+    ["/icons/engifar-192.png", 192],
+    ["/icons/engifar-512.png", 512],
+  ]);
+  for (const [route, expectedSize] of expectedPngSizes) {
+    const response = await responseFor(route);
+    assert.equal(response.status, 200, `${route} was not served`);
+    assert.match(response.headers.get("content-type") ?? "", /^image\/png\b/);
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    assert.ok(bytes.byteLength > 24, `${route} is not a valid PNG`);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    assert.equal(view.getUint32(16), expectedSize, `${route} has the wrong width`);
+    assert.equal(view.getUint32(20), expectedSize, `${route} has the wrong height`);
+  }
+
+  const manifestResponse = await responseFor("/site.webmanifest");
+  assert.equal(manifestResponse.status, 200);
+  assert.match(
+    manifestResponse.headers.get("content-type") ?? "",
+    /^application\/manifest\+json\b/,
+  );
+  const manifest = await manifestResponse.json();
+  assert.equal(manifest.name, "EngiFar");
+  assert.equal(manifest.start_url, "/index.html");
+  assert.deepEqual(
+    manifest.icons,
+    [
+      { src: "/icons/engifar-192.png", sizes: "192x192", type: "image/png" },
+      { src: "/icons/engifar-512.png", sizes: "512x512", type: "image/png" },
+    ],
+  );
+
+  const htmlFiles = (await walk("public")).filter((path) => path.endsWith(".html"));
+  for (const path of htmlFiles) {
+    const html = await Deno.readTextFile(path);
+    assert.match(html, /rel="icon"[^>]+EngiFar_rogo\.svg/, `${path} has no favicon`);
+    assert.match(
+      html,
+      /rel="apple-touch-icon"[^>]+sizes="180x180"[^>]+apple-touch-icon\.png/,
+      `${path} has no Apple touch icon`,
+    );
+    assert.match(html, /rel="manifest"[^>]+site\.webmanifest/, `${path} has no manifest`);
+  }
+
+  for (const page of ["quiz", "result", "card"]) {
+    const html = await Deno.readTextFile(`public/${page}.html`);
+    assert.match(html, /<img class="brand-mark"[^>]+EngiFar_rogo\.svg/);
+  }
+
+  const style = await Deno.readTextFile("public/style.css");
+  assert.match(style, /\.brand-mark\s*\{[\s\S]*?border-radius: 10px;[\s\S]*?object-fit: cover;/);
+
+  const homeHtml = await Deno.readTextFile("public/index.html");
+  assert.match(homeHtml, /class="home-corner-logo"[\s\S]*?EngiFar_rogo\.svg/);
+  assert.match(
+    style,
+    /\.home-corner-logo\s*\{[\s\S]*?right:var\(--safe-right\);[\s\S]*?border-radius:14px;/,
+  );
 });

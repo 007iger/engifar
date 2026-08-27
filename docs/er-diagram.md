@@ -1,6 +1,6 @@
 # データベースER図
 
-## 今回の変更
+## 問題・参加者メタデータ
 
 問題のDB管理と参加者別のランダム出題のため、次の2テーブルを追加しました。
 
@@ -10,6 +10,10 @@
 `session_participant_question`は`session_participant`の複合主キーを参照するため、同じセッションでも
 参加者ごとに異なる問題構成を保持できます。`question_index`は0〜23で、同じ参加者に同じ問題を
 重複して割り当てることはできません。
+
+問題の表示対象技術・言語は`quiz_question.technology`へ保存します。クルーカラーは
+`participant.crew_color`へ保存し、ゲーム開始時の値を`session_participant.crew_color_snapshot`へ
+複製します。これにより、将来参加者の色を変更できるようになっても過去セッションの表示を再現できます。
 
 ## 現在のER図
 
@@ -22,6 +26,8 @@ erDiagram
     SESSION_PARTICIPANT ||--o{ ANSWER : "回答する"
     SESSION_PARTICIPANT ||--o{ SESSION_PARTICIPANT_QUESTION : "抽選問題を持つ"
     QUIZ_QUESTION ||--o{ SESSION_PARTICIPANT_QUESTION : "抽選される"
+    QUIZ_QUESTION ||--o{ QUIZ_QUESTION_REVISION : "変更履歴を持つ"
+    QUIZ_QUESTION_REVISION ||--o{ SESSION_PARTICIPANT_QUESTION : "出題時の版を固定する"
 
     ROOM {
         uuid id PK
@@ -36,6 +42,7 @@ erDiagram
         uuid id PK
         uuid room_id FK
         varchar display_name
+        varchar crew_color
         varchar role
         char access_token_hash UK
         timestamptz joined_at
@@ -65,6 +72,7 @@ erDiagram
         uuid participant_id PK,FK
         uuid room_id FK
         varchar display_name_snapshot
+        varchar crew_color_snapshot
         varchar role_snapshot
         boolean result_published
         timestamptz joined_at
@@ -84,6 +92,7 @@ erDiagram
     QUIZ_QUESTION {
         varchar id PK
         varchar category
+        varchar technology
         smallint difficulty
         smallint weight
         smallint answer_time_seconds
@@ -97,11 +106,30 @@ erDiagram
         timestamptz updated_at
     }
 
+    QUIZ_QUESTION_REVISION {
+        uuid id PK
+        varchar question_id FK
+        char content_hash
+        varchar category
+        varchar technology
+        smallint difficulty
+        smallint weight
+        smallint answer_time_seconds
+        text instruction
+        text question
+        text_array choices
+        smallint correct_option
+        text explanation
+        boolean active
+        timestamptz created_at
+    }
+
     SESSION_PARTICIPANT_QUESTION {
         uuid game_session_id PK,FK
         uuid participant_id PK,FK
         smallint question_index PK
         varchar question_id FK
+        uuid question_revision_id FK
     }
 ```
 

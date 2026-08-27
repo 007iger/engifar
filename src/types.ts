@@ -14,6 +14,7 @@ export interface RoomSummary {
 export interface ParticipantSummary {
   id: string;
   displayName: string;
+  crewColor: string;
   role: ParticipantRole;
   joinedAt: string;
 }
@@ -66,20 +67,22 @@ export interface SessionResultAnswer {
 export interface SessionResultParticipantSource {
   participantId: string;
   displayName: string;
+  crewColor: string;
   role: ParticipantRole;
   resultPublished: boolean;
   questions?: QuizQuestionRecord[];
   answers: SessionResultAnswer[];
 }
 
-export interface ParticipantQuestionSelection {
+export interface ParticipantQuestionPlan {
   participantId: string;
-  question: QuizQuestionRecord;
+  questions: QuizQuestionRecord[];
 }
 
 export interface QuizQuestionRecord {
   id: string;
   category: string;
+  technology: string;
   weight: number;
   answerTimeSeconds: number;
   instruction: string;
@@ -98,6 +101,7 @@ export interface SessionResultSource {
 export interface ParticipantQuizResult {
   participantId: string;
   displayName: string;
+  crewColor: string;
   role: ParticipantRole;
   answeredCount: number;
   correctCount: number;
@@ -110,6 +114,7 @@ export interface ParticipantQuizResult {
 export interface SharedParticipantQuizResult {
   participantId: string;
   displayName: string;
+  crewColor: string;
   role: ParticipantRole;
   isRequester: boolean;
   published: boolean;
@@ -145,8 +150,8 @@ export interface AuthenticatedParticipant {
 
 export interface GameRepository {
   healthCheck(): Promise<void>;
-  createRoom(displayName: string): Promise<MembershipResult>;
-  joinRoom(code: string, displayName: string): Promise<MembershipResult>;
+  createRoom(displayName: string, crewColor: string): Promise<MembershipResult>;
+  joinRoom(code: string, displayName: string, crewColor: string): Promise<MembershipResult>;
   getRoom(code: string): Promise<RoomDetail>;
   /** WebSocket接続時に (roomCode, accessToken) から参加者と部屋(roomId)を特定するための認証。 */
   authenticateParticipant(roomCode: string, accessToken: string): Promise<AuthenticatedParticipant>;
@@ -165,12 +170,16 @@ export interface GameRepository {
     accessToken: string,
     reviewTimeSeconds?: number,
   ): Promise<GameSessionSummary>;
-  /** 参加者用にセッション開始時に抽選・固定した問題を取得する。 */
-  getParticipantQuestionSelection(
+  /** 短寿命の署名済みセッション認証後に、参加者JOINなしで進行状態だけを取得する。 */
+  getSessionSnapshot(
+    sessionId: string,
+    reviewTimeSeconds?: number,
+  ): Promise<GameSessionSummary>;
+  /** 参加者用にセッション開始時に抽選・固定した全問題を一括取得する。 */
+  getParticipantQuestionPlan(
     sessionId: string,
     accessToken: string,
-    questionIndex: number,
-  ): Promise<ParticipantQuestionSelection>;
+  ): Promise<ParticipantQuestionPlan>;
   /** 完了済みセッションの参加者と回答を、共有結果の集計用に取得する。 */
   getSessionResultSource(
     sessionId: string,

@@ -248,13 +248,60 @@ body {
   inset: 0;
   pointer-events: none;
 }
-.rl-runway-bot {
+
+/* --- クルー乗り込み演出: 共通アバター --- */
+.rl-boarding-avatar {
   position: absolute;
-  width: clamp(30px, 7vw, 48px);
-  transition: left 0.55s cubic-bezier(0.4, 0, 0.2, 1), top 0.55s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease, transform 0.25s ease;
+  left: 0;
+  top: 0;
+  width: clamp(26px, 6vw, 42px);
+  transform: translate(-50%, -100%);
+  transition: left 0.46s cubic-bezier(0.4, 0, 0.2, 1), top 0.46s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.rl-runway-bot.is-boarding { transform: scale(0.35); opacity: 0; }
-.rl-runway-bot .bot-svg { display: block; width: 100%; height: auto; }
+.rl-boarding-avatar-motion { display: block; }
+.rl-boarding-avatar .crew-avatar-svg,
+.rl-walker-svg { display: block; width: 100%; height: auto; }
+
+/* --- 4人以下: 階段方式 --- */
+.rl-walker-leg { transform-box: fill-box; transform-origin: 50% 0%; }
+.rl-boarding-avatar.is-walking .rl-walker-leg--left { animation: rlWalkLeg 0.5s ease-in-out infinite; }
+.rl-boarding-avatar.is-walking .rl-walker-leg--right { animation: rlWalkLeg 0.5s ease-in-out infinite reverse; }
+@keyframes rlWalkLeg { 0%, 100% { rotate: 24deg; } 50% { rotate: -24deg; } }
+
+.rl-boarding-avatar.is-walking .rl-boarding-avatar-motion { animation: rlWalkBob 0.5s ease-in-out infinite; }
+@keyframes rlWalkBob { 0%, 100% { translate: 0 0; rotate: -3deg; } 50% { translate: 0 -3px; rotate: 3deg; } }
+
+.rl-boarding-avatar.is-entering { transition: left 0.46s cubic-bezier(0.4, 0, 0.2, 1), top 0.46s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease; }
+.rl-boarding-avatar.is-entering .rl-boarding-avatar-motion { animation: rlEnterShrink 0.3s ease forwards; }
+@keyframes rlEnterShrink { to { scale: 0.2; opacity: 0; } }
+
+.rl-stairway {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: clamp(14px, 3vw, 20px);
+  transform-origin: 0% 50%;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(90deg, oklch(0.5 0.02 262) 0 4px, transparent 4px 5px),
+    oklch(0.4 0.03 262);
+  box-shadow: 0 3px 0 oklch(0.24 0.03 262), 0 3px 6px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.rl-stairway.is-visible { opacity: 1; }
+
+/* --- 5人以上: 上部ハッチ方式 --- */
+.rl-rocket-top-hatch-lid {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  rotate: 0deg;
+  transition: rotate 0.5s cubic-bezier(0.3, 1.4, 0.4, 1);
+}
+.rl-rocket-top-hatch-lid.is-open { rotate: -150deg; }
+
+.rl-boarding-avatar.is-jumping .rl-boarding-avatar-motion { animation: rlJumpTuck 0.42s ease-in forwards; }
+@keyframes rlJumpTuck { 0% { rotate: 0deg; scale: 1; } 60% { rotate: 200deg; scale: 0.8; } 100% { rotate: 320deg; scale: 0.3; } }
 
 .rl-rocket-wrap {
   position: relative;
@@ -569,6 +616,12 @@ body {
   }
   .rl-rocket-wrap.is-bouncing, .rl-rocket-wrap.is-igniting, .rl-rocket-wrap.is-flying, .rl-rocket-wrap.is-tumbling,
   .rl-countdown.is-visible {
+    animation: none !important;
+  }
+  .rl-boarding-avatar.is-walking .rl-walker-leg--left,
+  .rl-boarding-avatar.is-walking .rl-walker-leg--right,
+  .rl-boarding-avatar.is-walking .rl-boarding-avatar-motion,
+  .rl-boarding-avatar.is-jumping .rl-boarding-avatar-motion {
     animation: none !important;
   }
 }

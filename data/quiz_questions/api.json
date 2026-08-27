@@ -2,6 +2,7 @@
   {
     "id": "api-patch",
     "category": "API",
+    "technology": "HTTP",
     "weight": 1,
     "instruction": "ユーザー全体ではなくnameだけを部分更新します。適切なHTTPメソッドを選んでください。",
     "question": "fetch('/api/users/3', {\n  method: '＿＿＿',\n  body: JSON.stringify({ name: 'Aoi' })\n});",
@@ -19,6 +20,7 @@
   {
     "id": "api-delete",
     "category": "API",
+    "technology": "HTTP",
     "weight": 1,
     "instruction": "idが3のユーザーを削除するAPIを呼び出します。適切なHTTPメソッドを選んでください。",
     "question": "fetch('/api/users/3', {\n  method: '＿＿＿'\n});",
@@ -36,6 +38,7 @@
   {
     "id": "api-status-201",
     "category": "API",
+    "technology": "HTTP",
     "weight": 1,
     "instruction": "POSTで新しいリソースの作成に成功しました。適切なHTTPステータスコードを選んでください。",
     "question": "HTTP/1.1 ＿＿＿ Created",
@@ -53,6 +56,7 @@
   {
     "id": "api-status-400",
     "category": "API",
+    "technology": "HTTP",
     "weight": 1,
     "instruction": "必須のnameが送られておらず、リクエスト内容が不正です。返すステータスコードを選んでください。",
     "question": "return new Response('name is required', { status: ＿＿＿ });",
@@ -70,6 +74,7 @@
   {
     "id": "api-status-404",
     "category": "API",
+    "technology": "HTTP",
     "weight": 1,
     "answerTimeSeconds": 15,
     "instruction": "指定されたIDのユーザーが存在しなかったときに返すHTTPステータスを選んでください。",
@@ -87,6 +92,7 @@
   {
     "id": "api-content-type",
     "category": "API",
+    "technology": "HTTP",
     "weight": 1,
     "answerTimeSeconds": 15,
     "instruction": "JSONを送るPOSTリクエストに、本文の形式を伝えるヘッダーを付けます。空欄に入るヘッダー名を選んでください。",
@@ -104,6 +110,7 @@
   {
     "id": "api-accept-json",
     "category": "API",
+    "technology": "HTTP",
     "weight": 1,
     "instruction": "APIへJSON形式のレスポンスを希望することを伝えます。空欄に入るリクエストヘッダー名を選んでください。",
     "question": "headers: {\n  '＿＿＿': 'application/json'\n}",
@@ -121,6 +128,7 @@
   {
     "id": "api-query-parameter",
     "category": "API",
+    "technology": "HTTP",
     "weight": 1,
     "instruction": "URLの?page=3からpageの値を取得します。空欄に入るプロパティを選んでください。",
     "question": "const url = new URL(request.url);\nconst page = url.＿＿＿.get('page');",
@@ -138,6 +146,7 @@
   {
     "id": "api-status-204",
     "category": "API",
+    "technology": "HTTP",
     "weight": 1,
     "instruction": "削除処理は成功し、返す本文はありません。適切なステータスコードを選んでください。",
     "question": "return new Response(null, { status: ＿＿＿ });",
@@ -155,6 +164,7 @@
   {
     "id": "api-bearer-header",
     "category": "API",
+    "technology": "HTTP",
     "weight": 1,
     "instruction": "BearerトークンをAuthorizationヘッダーで送ります。空欄を選んでください。",
     "question": "headers: {\n  Authorization: '＿＿＿ ' + token\n}",
@@ -172,6 +182,7 @@
   {
     "id": "api-status-401",
     "category": "API",
+    "technology": "HTTP",
     "weight": 2,
     "instruction": "ログイン情報がなく、認証が必要なAPIへアクセスされました。返すステータスコードを選んでください。",
     "question": "return new Response('Unauthorized', { status: ＿＿＿ });",
@@ -189,6 +200,7 @@
   {
     "id": "api-status-403",
     "category": "API",
+    "technology": "HTTP",
     "weight": 2,
     "instruction": "ログイン済みですが、管理者限定APIを一般ユーザーが実行しようとしました。返すステータスコードを選んでください。",
     "question": "return new Response('Forbidden', { status: ＿＿＿ });",
@@ -206,6 +218,7 @@
   {
     "id": "api-path-parameter",
     "category": "API",
+    "technology": "HTTP",
     "weight": 2,
     "instruction": "/api/users/42 の42をURLPatternから取得します。空欄を選んでください。",
     "question": "const pattern = new URLPattern({ pathname: '/api/users/:id' });\nconst match = pattern.exec(request.url);\nconst id = match?.pathname.＿＿＿.id;",
@@ -223,6 +236,7 @@
   {
     "id": "api-pagination",
     "category": "API",
+    "technology": "HTTP",
     "weight": 2,
     "instruction": "一覧APIで20件ずつ取得し、先頭40件を飛ばします。適切なURLを選んでください。",
     "question": "fetch(＿＿＿);",
@@ -240,6 +254,7 @@
   {
     "id": "api-put",
     "category": "API",
+    "technology": "HTTP",
     "weight": 2,
     "answerTimeSeconds": 15,
     "instruction": "id=7のユーザー情報を丸ごと置き換えます。何度送っても同じ結果になるHTTPメソッドを選んでください。",
@@ -257,6 +272,7 @@
   {
     "id": "api-cors-origin",
     "category": "API",
+    "technology": "HTTP",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "別オリジンのフロントからこのAPIを呼べるようにします。サーバーが返すヘッダー名を選んでください。",
@@ -274,6 +290,7 @@
   {
     "id": "api-cors-methods-header",
     "category": "API",
+    "technology": "HTTP",
     "weight": 3,
     "instruction": "CORSのプリフライトレスポンスでGETとPOSTを許可します。空欄に入るヘッダー名を選んでください。",
     "question": "headers: {\n  '＿＿＿': 'GET, POST'\n}",
@@ -291,6 +308,7 @@
   {
     "id": "api-etag-304",
     "category": "API",
+    "technology": "HTTP",
     "weight": 3,
     "instruction": "クライアントが持つETagと現在のETagが一致し、本文を再送する必要がありません。返すステータスコードを選んでください。",
     "question": "if (request.headers.get('If-None-Match') === etag) {\n  return new Response(null, { status: ＿＿＿ });\n}",

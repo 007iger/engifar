@@ -2,6 +2,7 @@
   {
     "id": "database-update",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 1,
     "instruction": "idが3のユーザー名をAoiへ変更します。空欄に入るキーワードを選んでください。",
     "question": "UPDATE users\n＿＿＿ name = 'Aoi'\nWHERE id = 3;",
@@ -19,6 +20,7 @@
   {
     "id": "database-delete",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 1,
     "instruction": "終了済みセッションを1件削除します。空欄に入るSQL命令を選んでください。",
     "question": "＿＿＿ FROM sessions\nWHERE id = $1;",
@@ -36,6 +38,7 @@
   {
     "id": "database-order-desc",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 1,
     "instruction": "参加者をスコアの高い順に並べます。空欄に入るキーワードを選んでください。",
     "question": "SELECT * FROM participants\nORDER BY score ＿＿＿;",
@@ -53,6 +56,7 @@
   {
     "id": "database-is-null",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 1,
     "instruction": "まだ終了していないルームだけを取得します。finished_atがNULLの行を選ぶ条件を選んでください。",
     "question": "SELECT * FROM rooms\nWHERE finished_at ＿＿＿;",
@@ -70,6 +74,7 @@
   {
     "id": "database-count",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 1,
     "instruction": "answersテーブルに保存された回答件数を数えます。空欄に入る集計関数を選んでください。",
     "question": "SELECT ＿＿＿(*) FROM answers;",
@@ -87,6 +92,7 @@
   {
     "id": "database-limit",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 1,
     "answerTimeSeconds": 15,
     "instruction": "注文を新しい順に並べ、先頭の10件だけを取ります。空欄に入るキーワードを選んでください。",
@@ -104,6 +110,7 @@
   {
     "id": "database-join-on",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 1,
     "instruction": "参加者と、その参加者が所属するルームをroom_idで結合します。結合条件を指定するキーワードを選んでください。",
     "question": "SELECT p.name, r.code\nFROM participants p\nJOIN rooms r\n＿＿＿ p.room_id = r.id;",
@@ -121,6 +128,7 @@
   {
     "id": "database-inner-join",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 1,
     "answerTimeSeconds": 15,
     "instruction": "usersとordersをuser_idでつなぎ、両方にそろっている行だけを取ります。空欄に入る結合を選んでください。",
@@ -138,6 +146,7 @@
   {
     "id": "database-primary-key",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 1,
     "instruction": "roomsテーブルのidを各行を一意に識別する主キーにします。空欄を選んでください。",
     "question": "id UUID ＿＿＿",
@@ -155,6 +164,7 @@
   {
     "id": "database-not-null",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 1,
     "instruction": "roomsテーブルのcodeを必須項目にします。空欄に入る制約を選んでください。",
     "question": "code TEXT ＿＿＿",
@@ -172,6 +182,7 @@
   {
     "id": "database-left-join",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 2,
     "instruction": "回答がまだない参加者も結果に残したままanswersを結合します。使うJOINを選んでください。",
     "question": "SELECT p.name, a.answer\nFROM participants p\n＿＿＿ answers a ON a.participant_id = p.id;",
@@ -189,6 +200,7 @@
   {
     "id": "database-foreign-key",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 2,
     "instruction": "participants.room_idがrooms.idを参照する外部キーになるようにします。空欄を選んでください。",
     "question": "room_id UUID\n  REFERENCES ＿＿＿(id)",
@@ -206,6 +218,7 @@
   {
     "id": "database-unique",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 2,
     "answerTimeSeconds": 15,
     "instruction": "同じメールアドレスの行が2件登録されるのを防ぎます。列に付ける制約を選んでください。",
@@ -223,6 +236,7 @@
   {
     "id": "database-begin-transaction",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 2,
     "instruction": "複数の更新を1つのまとまりとして扱うトランザクションを開始します。空欄を選んでください。",
     "question": "＿＿＿;\nUPDATE rooms SET status = 'finished' WHERE id = $1;\nUPDATE participants SET active = false WHERE room_id = $1;\nCOMMIT;",
@@ -240,6 +254,7 @@
   {
     "id": "database-rollback",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 2,
     "instruction": "トランザクション中にエラーが起きたため、それまでの変更を取り消します。空欄を選んでください。",
     "question": "BEGIN;\n-- 更新処理\n＿＿＿;",
@@ -257,6 +272,7 @@
   {
     "id": "database-commit",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 3,
     "answerTimeSeconds": 15,
     "instruction": "2つのUPDATEが両方成功したときだけ変更を確定させます。空欄に入る命令を選んでください。",
@@ -274,6 +290,7 @@
   {
     "id": "database-create-index",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 3,
     "instruction": "participant_idで回答を頻繁に検索するため、answers.participant_idにインデックスを作ります。空欄を選んでください。",
     "question": "CREATE ＿＿＿ idx_answers_participant_id\nON answers(participant_id);",
@@ -291,6 +308,7 @@
   {
     "id": "database-upsert",
     "category": "データベース",
+    "technology": "SQL / PostgreSQL",
     "weight": 3,
     "instruction": "同じidがすでに存在する場合はINSERTを失敗させず、nameを更新します。空欄を選んでください。",
     "question": "INSERT INTO users (id, name) VALUES ($1, $2)\nON CONFLICT (id) DO ＿＿＿\nSET name = EXCLUDED.name;",
