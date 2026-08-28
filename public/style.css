@@ -3141,18 +3141,30 @@ a {
 .reference-hero { text-align: center; }
 .reference-logo {
   margin: 0;
-  color: var(--text);
   font: 900 clamp(42px, 7.4vw, 128px)/.9 "Arial Black", "Segoe UI", sans-serif;
   letter-spacing: .06em;
-  text-shadow: 0 0 32px rgba(98,228,236,.2);
+  background: linear-gradient(90deg, var(--cyan), var(--orange));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 60px rgba(255, 117, 65, .35);
 }
 .reference-hero h1 {
-  margin: 7px 0 0;
-  color: var(--cyan);
-  font-size: clamp(12px, 1.7vw, 28px);
-  letter-spacing: .22em;
+  display: inline-block;
+  max-width: min(94vw, 480px);
+  margin: 14px 0 0;
+  padding: 8px 20px;
+  border: 2px dashed var(--orange);
+  border-radius: 12px;
+  background: var(--panel-soft);
+  transform: rotate(-2deg);
+  color: var(--orange);
+  font-size: clamp(12px, 1.7vw, 22px);
+  font-weight: 800;
+  letter-spacing: .1em;
+  line-height: 1.5;
   word-break: keep-all;
-  overflow-wrap: normal;
+  overflow-wrap: break-word;
 }
 
 .reference-scene { position: relative; min-height: 0; }
@@ -3352,7 +3364,7 @@ a {
 @media (max-width:760px) {
   .reference-home-main { grid-template-rows:auto minmax(115px,1fr) auto; }
   .reference-logo { font-size:clamp(34px,12vw,54px); }
-  .reference-hero h1 { margin-top:3px; font-size:10px; }
+  .reference-hero h1 { margin-top:6px; padding:5px 12px; border-width:1.5px; font-size:10px; }
   .scene-bot{--crew-size:34px}.scene-bot--one{left:10%}.scene-bot--two{left:25%}.scene-bot--three{right:25%}.scene-bot--four{right:10%}
   .home-rocket { width:62px; height:132px; }
   .home-control { padding:9px 10px; border-radius:15px; }
@@ -3368,6 +3380,13 @@ a {
   .result-rank-row{padding:6px 8px}.result-data-grid{grid-template-columns:minmax(150px,1.08fr) minmax(116px,.72fr);gap:5px;margin:6px 0}.radar-chart{max-height:174px}.radar-label{font-size:8px}.result-data-grid .result-metrics{gap:4px}.result-data-grid .result-metrics>div{padding:6px 8px;border-radius:10px}.result-data-grid .result-metrics dt{font-size:8px}.result-data-grid .result-metrics dt small{display:none}.result-data-grid .result-metrics dd{margin-top:2px}.result-data-grid .result-metrics dd b{font-size:20px}.result-data-grid .metric-altitude dd b{font-size:15px}.result-data-grid .result-metrics dd span{font-size:8px}.radar-card figcaption{display:none}
   .result-view-tabs{margin-bottom:7px;padding:3px}.result-view-tab{min-height:32px;padding:5px 7px;font-size:9px}
   .crew-results{margin-bottom:6px;padding:6px 7px}.crew-results.result-view-pane{padding:8px}.crew-results ol{max-height:92px}.crew-results li{grid-template-columns:18px minmax(0,1fr) auto;padding:4px 5px}.crew-results-detail{display:none}
+}
+
+/* Below 620px the help button (.guide-open-button--home) drops to top:62px, which is tall
+   enough to reach into the hero header — keep the tagline badge narrow enough here that it
+   never reaches the button, on either axis. */
+@media (max-width:430px) {
+  .reference-hero h1 { max-width:140px; margin-top:8px; padding:4px 6px; font-size:8.5px; }
 }
 
 @media (max-height:620px) and (min-width:700px) {
@@ -3402,7 +3421,7 @@ a {
   }
   .reference-hero { grid-column:1; grid-row:1; align-self:end; }
   .reference-logo { font-size:clamp(36px,6.5vw,54px); }
-  .reference-hero h1 { margin-top:3px; font-size:9px; letter-spacing:.08em; line-height:1.45; }
+  .reference-hero h1 { margin-top:6px; padding:4px 10px; border-width:1.5px; font-size:9px; letter-spacing:.08em; line-height:1.45; }
   .reference-scene { grid-column:1; grid-row:2; }
   .home-rocket { width:58px; height:124px; }
   .scene-bot { --crew-size:30px; }
