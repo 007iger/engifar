@@ -383,3 +383,24 @@ Deno.test("questionCountが範囲外だとエラーになる", () => {
   assert.throws(() => createQuizService({ secret: SECRET, questionCount: 25 }));
   assert.throws(() => createQuizService({ secret: SECRET, questionCount: 1.5 }));
 });
+
+Deno.test("reviewTimeSecondsを指定すると短縮したデモ用の答え合わせ時間になる", () => {
+  const quiz = createQuizService({ secret: SECRET, reviewTimeSeconds: 2 });
+  assert.equal(quiz.config.reviewTimeSeconds, 2);
+});
+
+Deno.test("reviewTimeSecondsを省略すると通常の5秒になる", () => {
+  const quiz = createQuizService({ secret: SECRET });
+  assert.equal(quiz.config.reviewTimeSeconds, 5);
+});
+
+Deno.test("reviewTimeSecondsが範囲外だとエラーになる", () => {
+  assert.throws(() => createQuizService({ secret: SECRET, reviewTimeSeconds: -1 }));
+  assert.throws(() => createQuizService({ secret: SECRET, reviewTimeSeconds: 61 }));
+  assert.throws(() => createQuizService({ secret: SECRET, reviewTimeSeconds: 2.5 }));
+});
+
+Deno.test("reviewTimeSecondsは0を指定できる(即座に次へ進む用途)", () => {
+  const quiz = createQuizService({ secret: SECRET, reviewTimeSeconds: 0 });
+  assert.equal(quiz.config.reviewTimeSeconds, 0);
+});
