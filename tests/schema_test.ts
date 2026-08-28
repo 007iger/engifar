@@ -40,3 +40,65 @@ Deno.test("choice order migration preserves old sessions and versions new sessio
   assert.match(migration, /ALTER COLUMN choice_order_version SET DEFAULT 2/);
   assert.match(migration, /CHECK \(choice_order_version IN \(1, 2\)\)/);
 });
+
+Deno.test("result publication migration keeps personal results private by default", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/004_result_publication.sql", import.meta.url),
+  );
+
+  assert.match(migration, /ADD COLUMN result_published boolean NOT NULL DEFAULT false/);
+});
+
+Deno.test("quiz timing migration snapshots per-question times and review state", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/005_quiz_timing.sql", import.meta.url),
+  );
+
+  assert.match(migration, /ADD COLUMN question_answer_time_seconds smallint\[\]/);
+  assert.match(migration, /array_length\(question_answer_time_seconds, 1\) = question_count/);
+  assert.match(migration, /ADD COLUMN question_review_started_at timestamptz/);
+  assert.match(migration, /ADD COLUMN review_ends_at timestamptz/);
+});
+
+Deno.test("question set migration preserves old sessions and versions new sessions", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/006_quiz_question_set_version.sql", import.meta.url),
+  );
+
+  assert.match(migration, /ALTER COLUMN choice_order_version SET DEFAULT 3/);
+  assert.match(migration, /CHECK \(choice_order_version IN \(1, 2, 3\)\)/);
+});
+
+Deno.test("question bank migration stores per-user question selections", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/007_quiz_question_bank.sql", import.meta.url),
+  );
+
+  assert.match(migration, /CREATE TABLE quiz_question/);
+  assert.match(migration, /CREATE TABLE session_participant_question/);
+  assert.match(migration, /UNIQUE \(game_session_id, participant_id, question_id\)/);
+  assert.match(migration, /ALTER COLUMN choice_order_version SET DEFAULT 4/);
+});
+
+Deno.test("question metadata and crew colors are persisted and snapshotted", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/008_question_technology_and_crew_color.sql", import.meta.url),
+  );
+
+  assert.match(migration, /ADD COLUMN technology varchar\(64\) NOT NULL/);
+  assert.match(migration, /ADD COLUMN crew_color varchar\(7\) NOT NULL/);
+  assert.match(migration, /ADD COLUMN crew_color_snapshot varchar\(7\) NOT NULL/);
+  assert.match(migration, /crew_color ~ '\^#\[0-9a-f\]\{6\}\$'/);
+});
+
+Deno.test("question revisions keep past session grading immutable", async () => {
+  const migration = await Deno.readTextFile(
+    new URL("../migrations/009_quiz_question_revisions.sql", import.meta.url),
+  );
+
+  assert.match(migration, /CREATE TABLE quiz_question_revision/);
+  assert.match(migration, /UNIQUE \(question_id, content_hash\)/);
+  assert.match(migration, /CREATE TRIGGER quiz_question_revision_content_immutable/);
+  assert.match(migration, /ADD COLUMN question_revision_id uuid/);
+  assert.match(migration, /FOREIGN KEY \(question_revision_id, question_id\)/);
+});

@@ -1,0 +1,73 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+  background: #050a16;
+  color: #f4f8f7;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100dvh; overflow: hidden; }
+button { font: inherit; }
+
+.build-stage {
+  position: relative;
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  overflow: hidden;
+  padding: 20px;
+  background: radial-gradient(circle at 50% 66%, rgba(98,228,236,.2), transparent 38%), linear-gradient(#050a16, #0a1b30);
+}
+
+.build-stars,
+.build-stars::before,
+.build-stars::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background-image: radial-gradient(circle at 15% 22%, #fff 0 1px, transparent 2px), radial-gradient(circle at 76% 14%, #62e4ec 0 1px, transparent 2px), radial-gradient(circle at 88% 68%, #fff 0 1px, transparent 2px), radial-gradient(circle at 32% 82%, #c9f765 0 1px, transparent 2px);
+  animation: build-twinkle 2.4s ease-in-out infinite alternate;
+}
+.build-stars::before { translate: 90px 45px; opacity: .55; }
+.build-stars::after { translate: -120px 130px; opacity: .4; }
+
+.build-scene {
+  z-index: 1;
+  width: min(92vw, 620px);
+  text-align: center;
+}
+.build-eyebrow { margin: 0; color: #62e4ec; font-size: 11px; font-weight: 900; letter-spacing: .2em; }
+.build-scene h1 { margin: 7px 0; font-size: clamp(28px, 7vw, 48px); }
+.build-scene > p:not(.build-eyebrow) { min-height: 1.6em; margin: 0; color: #9eb0bf; font-weight: 700; }
+
+.build-workshop { position: relative; height: min(52vh, 390px); margin-top: 12px; }
+.build-orbit { position: absolute; inset: 18% 10%; border: 1px solid rgba(98,228,236,.28); border-radius: 50%; rotate: -8deg; }
+.build-rocket { position: absolute; left: 50%; top: 48%; width: 96px; height: 210px; filter: drop-shadow(0 0 50px rgba(98,228,236,.22)); translate: -50% -50%; animation: build-rocket-bob 2s ease-in-out infinite; }
+.build-rocket-svg { display: block; width: 100%; height: 100%; }
+.build-rocket-flame { transform-box: fill-box; transform-origin: 50% 0%; opacity: 0; }
+body[data-complete="true"] .build-rocket-flame { opacity: 1; animation: build-flame .2s ease-in-out infinite alternate; }
+
+.build-bot { --bot-color:#54d37c; position:absolute; width:48px; height:62px; border-radius:46% 46% 42% 42%; background:var(--bot-color); box-shadow:0 0 18px var(--bot-color); animation:build-bot 1.2s ease-in-out infinite alternate; }
+.build-bot::before { position:absolute; left:14%; top:28%; width:72%; height:31%; content:""; border-radius:999px; background:#f0f7f5; }
+.build-bot::after { position:absolute; left:32%; top:40%; width:5px; height:5px; content:""; border-radius:50%; background:#122232; box-shadow:13px 0 #122232; }
+.build-bot--one { --bot-color:#ff665f; left:18%; top:22%; }
+.build-bot--two { --bot-color:#5ca9ff; right:17%; top:28%; animation-delay:-.4s; }
+.build-bot--three { --bot-color:#f5cf4b; left:22%; bottom:13%; animation-delay:-.8s; }
+.build-bot--four { --bot-color:#54d37c; right:20%; bottom:10%; animation-delay:-1.1s; }
+.build-spark { position:absolute; color:#fff176; font-size:24px; animation:build-spin 1.3s linear infinite; }
+.build-spark--one { left:31%; top:35%; }.build-spark--two { right:29%; bottom:34%; animation-delay:-.6s; }
+
+.build-progress { height: 6px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.1); }
+.build-progress i { display:block; width:100%; height:100%; transform-origin:left; background:linear-gradient(90deg,#62e4ec,#c9f765,#ff7541); animation:build-progress 2.2s linear both; }
+#build-skip { margin-top:16px; padding:9px 17px; border:1px solid rgba(98,228,236,.35); border-radius:999px; color:#62e4ec; background:rgba(7,17,31,.72); cursor:pointer; }
+
+@keyframes build-twinkle { to { opacity:.55; } }
+@keyframes build-rocket-bob { 50% { translate:-50% calc(-50% - 7px); } }
+@keyframes build-bot { to { translate:0 -8px; rotate:5deg; } }
+@keyframes build-spin { to { rotate:360deg; scale:.7; } }
+@keyframes build-flame { to { scale:.82 1.12; } }
+@keyframes build-progress { from { scale:0 1; } to { scale:1 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; }
+}

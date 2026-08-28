@@ -1,5 +1,10 @@
 export const OUTPUT_THRESHOLD = 60;
 export const SAFETY_THRESHOLD = 75;
+export const FLIGHT_SCORE_MAX = 14_000;
+
+const POWER_SCORE_WEIGHT = 0.65;
+const SAFETY_SCORE_WEIGHT = 0.35;
+const LIGHT_YEAR_KM = 9_460_730_472_580.8;
 
 export const FLIGHT_RANKS = Object.freeze([
   {
@@ -7,41 +12,61 @@ export const FLIGHT_RANKS = Object.freeze([
     min: 0,
     name: "不時着級",
     destination: "海（不時着）",
+    distanceKm: 0,
+    distanceNote: "海上で安全停止",
+    measure: "distance",
+    approximateDistance: false,
     color: "#62e4ec",
     legs: ["sky", "atmosphere-edge"],
     crashLanding: true,
   },
   {
     key: "space_entry",
-    min: 2800,
+    min: 1400,
     name: "宇宙突入級",
     destination: "宇宙空間",
+    distanceKm: 100,
+    distanceNote: "宇宙との境界・カーマンライン",
+    measure: "altitude",
+    approximateDistance: false,
     color: "#8fe8ff",
     legs: ["sky", "atmosphere-edge", "space"],
   },
   {
     key: "moon",
-    min: 4200,
+    min: 3500,
     name: "月面着陸級",
     destination: "月",
+    distanceKm: 384_400,
+    distanceNote: "地球から月までの平均距離",
+    measure: "distance",
+    approximateDistance: true,
     color: "#e7e4d7",
     legs: ["sky", "atmosphere-edge", "space", "space"],
     approachColor: "oklch(0.88 0.02 90)",
   },
   {
     key: "mars",
-    min: 6500,
+    min: 5600,
     name: "火星着陸級",
     destination: "火星",
+    distanceKm: 54_600_000,
+    distanceNote: "地球から火星までの最接近距離",
+    measure: "distance",
+    approximateDistance: true,
     color: "#ff855f",
     legs: ["sky", "atmosphere-edge", "space", "space"],
     approachColor: "oklch(0.62 0.19 32)",
   },
   {
     key: "uranus",
-    min: 8500,
+    min: 8400,
     name: "天王星着陸級",
     destination: "天王星",
+    distanceKm: 2_500_000_000,
+    distanceNote: "地球から天王星までの概算距離",
+    measure: "distance",
+    approximateDistance: true,
     color: "#72e3e6",
     legs: ["sky", "atmosphere-edge", "space", "space"],
     approachColor: "oklch(0.82 0.09 200)",
@@ -51,24 +76,36 @@ export const FLIGHT_RANKS = Object.freeze([
     min: 10500,
     name: "海王星着陸級",
     destination: "海王星",
+    distanceKm: 4_300_000_000,
+    distanceNote: "地球から海王星までの概算距離",
+    measure: "distance",
+    approximateDistance: true,
     color: "#678eff",
     legs: ["sky", "atmosphere-edge", "space", "space"],
     approachColor: "oklch(0.5 0.16 262)",
   },
   {
     key: "galaxy",
-    min: 12000,
+    min: 11900,
     name: "銀河超越級",
-    destination: "新しい銀河",
+    destination: "銀河の彼方",
+    distanceKm: 50_000 * LIGHT_YEAR_KM,
+    distanceNote: "天の川銀河の外縁までの目安",
+    measure: "distance",
+    approximateDistance: true,
     color: "#d58cff",
     legs: ["sky", "atmosphere-edge", "space", "space", "space"],
     approachColor: "oklch(0.7 0.16 300)",
   },
   {
     key: "unknown",
-    min: 13500,
+    min: 13300,
     name: "未知の惑星到達級",
     destination: "未知の惑星",
+    distanceKm: 2_500_000 * LIGHT_YEAR_KM,
+    distanceNote: "アンドロメダ銀河級の航行距離",
+    measure: "distance",
+    approximateDistance: true,
     color: "#ffd36a",
     legs: ["sky", "atmosphere-edge", "space", "space", "space"],
     approachColor: "oklch(0.85 0.18 40)",
@@ -126,9 +163,72 @@ export function computeMetrics(records) {
   return { power, safety, categoryScores };
 }
 
-export function getFlightRank(altitude) {
-  const height = Math.max(0, safeNumber(altitude));
-  return [...FLIGHT_RANKS].reverse().find((rank) => height >= rank.min) || FLIGHT_RANKS[0];
+export function getFlightRank(score) {
+  const flightScore = Math.max(0, safeNumber(score));
+  return [...FLIGHT_RANKS].reverse().find((rank) => flightScore >= rank.min) || FLIGHT_RANKS[0];
+}
+
+function roundTo(value, fractionDigits) {
+  const scale = 10 ** fractionDigits;
+  return Math.round(value * scale) / scale;
+}
+
+export function formatFlightDistance(distanceKm) {
+  const kilometers = Math.max(0, safeNumber(distanceKm));
+  let value = kilometers;
+  let unit = "km";
+  let fractionDigits = 0;
+
+  if (kilometers >= LIGHT_YEAR_KM * 10_000) {
+    value = kilometers / LIGHT_YEAR_KM / 10_000;
+    unit = "万光年";
+    fractionDigits = value < 10 && !Number.isInteger(value) ? 1 : 0;
+  } else if (kilometers >= LIGHT_YEAR_KM) {
+    value = kilometers / LIGHT_YEAR_KM;
+    unit = "光年";
+    fractionDigits = value < 10 ? 1 : 0;
+  } else if (kilometers >= 100_000_000) {
+    value = kilometers / 100_000_000;
+    unit = "億 km";
+    fractionDigits = value < 10 && !Number.isInteger(value) ? 1 : 0;
+  } else if (kilometers >= 10_000) {
+    value = kilometers / 10_000;
+    unit = "万 km";
+    fractionDigits = value < 100 && !Number.isInteger(value) ? 1 : 0;
+  }
+
+  value = roundTo(value, fractionDigits);
+  const formattedValue = value.toLocaleString("ja-JP", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  });
+  return {
+    value,
+    unit,
+    fractionDigits,
+    formattedValue,
+    text: `${formattedValue} ${unit}`,
+  };
+}
+
+export function getFlightProgress(score) {
+  const flightScore = Math.round(clamp(safeNumber(score), 0, FLIGHT_SCORE_MAX));
+  const rank = getFlightRank(flightScore);
+  const rankIndex = FLIGHT_RANKS.indexOf(rank);
+  const nextRank = FLIGHT_RANKS[rankIndex + 1] || null;
+  if (!nextRank) {
+    return { rank, nextRank: null, progressPercent: 100, remainingScore: 0 };
+  }
+  const interval = nextRank.min - rank.min;
+  const progressPercent = interval
+    ? Math.round(clamp(((flightScore - rank.min) / interval) * 100, 0, 100))
+    : 100;
+  return {
+    rank,
+    nextRank,
+    progressPercent,
+    remainingScore: Math.max(0, nextRank.min - flightScore),
+  };
 }
 
 export function calculateOutcome(metrics) {
@@ -136,8 +236,12 @@ export function calculateOutcome(metrics) {
   const safety = clamp(safeNumber(metrics.safety), 0, 100);
   const reachedOrbit = power >= OUTPUT_THRESHOLD && safety >= SAFETY_THRESHOLD;
 
-  // 出力と安全性を同じ比重で0〜14,000へ写像し、ランク間に到達不能な空白を作らない。
-  const altitude = Math.round((power + safety) * 70);
+  // 正答による出力を主軸に、分野バランスを安全性として加え、0〜14,000へ連続写像する。
+  // 分岐定数を足さないため、途中のランクにも到達可能なスコアが必ず残る。
+  const flightScore = Math.round(
+    (power * POWER_SCORE_WEIGHT + safety * SAFETY_SCORE_WEIGHT) *
+      (FLIGHT_SCORE_MAX / 100),
+  );
   const average = (power + safety) / 2;
 
   let title = "空へ一歩、ナイスフライト！";
@@ -145,14 +249,22 @@ export function calculateOutcome(metrics) {
   else if (average >= 72) title = "星空手前で大きなきらめき！";
   else if (average >= 48) title = "雲の上までフライト！";
 
-  const rank = getFlightRank(altitude);
+  const progress = getFlightProgress(flightScore);
+  const rank = progress.rank;
   return {
     reachedOrbit,
     kind: reachedOrbit ? "orbit" : "spark",
-    altitude,
+    flightScore,
+    // 保存済みデータとの互換用。値は距離ではなく内部フライトスコア。
+    altitude: flightScore,
+    distanceKm: rank.distanceKm,
     title,
     rankKey: rank.key,
     rankName: rank.name,
     destination: rank.destination,
+    nextRankKey: progress.nextRank?.key || null,
+    nextRankName: progress.nextRank?.name || null,
+    rankProgress: progress.progressPercent,
+    scoreToNextRank: progress.remainingScore,
   };
 }

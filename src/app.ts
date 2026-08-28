@@ -1,16 +1,26 @@
 import { serveDir } from "@std/http/file-server";
 import { ApiError } from "./errors.ts";
-import type { GameGenre, GameRepository, SessionResults } from "./types.ts";
+import type { DatabaseMetricsSnapshot } from "./db/metrics.ts";
+import type {
+  GameGenre,
+  GameRepository,
+  ParticipantQuestionPlan,
+  SessionResults,
+} from "./types.ts";
 import { broadcast, handleWsUpgrade } from "./ws.ts";
 import { scheduleQuestionAdvance, triggerEarlyQuestionEnd } from "./questionLoop.ts";
 import {
   createQuizService,
   LEGACY_CHOICE_ORDER_VARIANT,
+  questionSetVersionForChoiceOrder,
   type QuizService,
   safetyFromCategoryScores,
 } from "./quiz.ts";
 
 const MAX_JSON_BODY_BYTES = 16 * 1024;
+const FIRST_QUESTION_START_DELAY_MS = 3_000;
+const QUESTION_PLAN_CACHE_TTL_MS = 15 * 60 * 1_000;
+const QUESTION_PLAN_CACHE_MAX_ENTRIES = 1_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SECURITY_HEADERS = Object.freeze({
   "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
@@ -27,10 +37,85 @@ interface AppOptions {
   staticRoot?: string;
   assetRoot?: string;
   quizService?: QuizService;
+  databaseMetrics?: () => DatabaseMetricsSnapshot;
 }
 
 interface JsonRecord {
   [key: string]: unknown;
+}
+
+class ParticipantQuestionPlanCache {
+  readonly #entries = new Map<
+    string,
+    { expiresAt: number; value: Promise<ParticipantQuestionPlan> }
+  >();
+  #hits = 0;
+  #misses = 0;
+
+  constructor(private readonly repository: GameRepository) {}
+
+  async get(sessionId: string, accessToken: string): Promise<ParticipantQuestionPlan> {
+    const tokenDigest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(accessToken),
+    );
+    const key = `${sessionId}:${
+      Array.from(new Uint8Array(tokenDigest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+    }`;
+    const now = Date.now();
+    const cached = this.#entries.get(key);
+    if (cached && cached.expiresAt > now) {
+      this.#hits += 1;
+      return await cached.value;
+    }
+    if (cached) this.#entries.delete(key);
+
+    this.#misses += 1;
+    const value = this.repository.getParticipantQuestionPlan(sessionId, accessToken);
+    const entry = { expiresAt: now + QUESTION_PLAN_CACHE_TTL_MS, value };
+    this.#entries.set(key, entry);
+    if (this.#entries.size > QUESTION_PLAN_CACHE_MAX_ENTRIES) {
+      this.#entries.delete(this.#entries.keys().next().value!);
+    }
+    try {
+      return await value;
+    } catch (error) {
+      if (this.#entries.get(key) === entry) this.#entries.delete(key);
+      throw error;
+    }
+  }
+
+  snapshot(): { hits: number; misses: number; entries: number; hitRate: number } {
+    const lookups = this.#hits + this.#misses;
+    return {
+      hits: this.#hits,
+      misses: this.#misses,
+      entries: this.#entries.size,
+      hitRate: lookups ? Math.round((this.#hits / lookups) * 1_000) / 1_000 : 0,
+    };
+  }
+}
+
+class SessionAuthMetrics {
+  #signedTokenHits = 0;
+  #databaseFallbacks = 0;
+
+  recordSignedTokenHit(): void {
+    this.#signedTokenHits += 1;
+  }
+
+  recordDatabaseFallback(): void {
+    this.#databaseFallbacks += 1;
+  }
+
+  snapshot(): { signedTokenHits: number; databaseFallbacks: number; hitRate: number } {
+    const checks = this.#signedTokenHits + this.#databaseFallbacks;
+    return {
+      signedTokenHits: this.#signedTokenHits,
+      databaseFallbacks: this.#databaseFallbacks,
+      hitRate: checks ? Math.round((this.#signedTokenHits / checks) * 1_000) / 1_000 : 0,
+    };
+  }
 }
 
 function json(payload: unknown, status = 200, extraHeaders: HeadersInit = {}): Response {
@@ -127,6 +212,13 @@ function displayNameFrom(body: JsonRecord): string {
   return displayName;
 }
 
+function crewColorFrom(body: JsonRecord): string {
+  if (typeof body.crewColor !== "string" || !/^#[0-9a-fA-F]{6}$/.test(body.crewColor)) {
+    throw new ApiError(400, "INVALID_CREW_COLOR", "crewColor must be a six-digit hex color");
+  }
+  return body.crewColor.toLowerCase();
+}
+
 function selectedOptionFrom(body: JsonRecord): number {
   const option = body.selectedOption;
   if (!Number.isInteger(option) || typeof option !== "number" || option < 0 || option > 3) {
@@ -135,10 +227,26 @@ function selectedOptionFrom(body: JsonRecord): number {
   return option;
 }
 
+function publishedFrom(body: JsonRecord): boolean {
+  if (typeof body.published !== "boolean") {
+    throw new ApiError(400, "INVALID_PUBLICATION", "published must be a boolean");
+  }
+  return body.published;
+}
+
 function quizTokenFrom(body: JsonRecord, key: "progressToken" | "questionToken"): string {
   const token = body[key];
   if (typeof token !== "string" || token.length < 20 || token.length > 4096) {
     throw new ApiError(400, "INVALID_QUIZ_TOKEN", `${key} is required`);
+  }
+  return token;
+}
+
+function sessionAuthTokenFrom(body: JsonRecord): string | null {
+  const token = body.sessionAuthToken;
+  if (token === undefined || token === null) return null;
+  if (typeof token !== "string" || token.length < 20 || token.length > 4096) {
+    throw new ApiError(400, "INVALID_SESSION_AUTH_TOKEN", "sessionAuthToken is invalid");
   }
   return token;
 }
@@ -205,17 +313,91 @@ function choiceOrderVariant(session: { id: string; choiceOrderVersion: number })
   return session.choiceOrderVersion >= 2 ? session.id : LEGACY_CHOICE_ORDER_VARIANT;
 }
 
+function participantChoiceOrderVariant(
+  session: { id: string; choiceOrderVersion: number },
+  participantId: string,
+): string {
+  return session.choiceOrderVersion >= 4
+    ? `${session.id}:${participantId}`
+    : choiceOrderVariant(session);
+}
+
+function needsQuestionTimer(session: {
+  status: string;
+  questionStartedAt: string | null;
+  reviewEndsAt: string | null;
+}): boolean {
+  if (session.status !== "active") return false;
+  if (session.reviewEndsAt) return Date.parse(session.reviewEndsAt) > Date.now();
+  return Boolean(
+    session.questionStartedAt && Date.parse(session.questionStartedAt) >= Date.now() - 1_000,
+  );
+}
+
+async function loadAuthorizedSession(
+  repository: GameRepository,
+  quizService: QuizService,
+  requestedSessionId: string,
+  accessToken: string,
+  sessionAuthToken: string | null,
+  metrics: SessionAuthMetrics,
+): Promise<{ session: Awaited<ReturnType<GameRepository["getSessionSnapshot"]>>; token: string }> {
+  if (
+    sessionAuthToken &&
+    await quizService.isSessionAuthTokenValid(
+      sessionAuthToken,
+      requestedSessionId,
+      accessToken,
+    )
+  ) {
+    metrics.recordSignedTokenHit();
+    return {
+      session: await repository.getSessionSnapshot(
+        requestedSessionId,
+        quizService.config.reviewTimeSeconds,
+      ),
+      token: sessionAuthToken,
+    };
+  }
+
+  metrics.recordDatabaseFallback();
+  const session = await repository.getSessionForParticipant(
+    requestedSessionId,
+    accessToken,
+    quizService.config.reviewTimeSeconds,
+  );
+  return {
+    session,
+    token: await quizService.createSessionAuthToken(session.id, accessToken),
+  };
+}
+
 async function handleApi(
   request: Request,
   repository: GameRepository,
   quizService: QuizService,
+  questionPlanCache: ParticipantQuestionPlanCache,
+  sessionAuthMetrics: SessionAuthMetrics,
+  databaseMetrics?: () => DatabaseMetricsSnapshot,
 ): Promise<Response> {
   const { pathname } = new URL(request.url);
 
   if (request.method === "GET" && pathname === "/api/health") {
     try {
       await repository.healthCheck();
-      return json({ status: "ok", database: "up" });
+      return json({
+        status: "ok",
+        database: "up",
+        ...(databaseMetrics
+          ? {
+            metrics: {
+              database: databaseMetrics(),
+              questionPlanCache: questionPlanCache.snapshot(),
+              sessionAuth: sessionAuthMetrics.snapshot(),
+            },
+          }
+          : {}),
+      });
     } catch (error) {
       console.error("Database health check failed", error);
       return json(
@@ -258,7 +440,9 @@ async function handleApi(
 
   if (request.method === "POST" && pathname === "/api/rooms") {
     const body = await readJsonObject(request);
-    return json({ data: await repository.createRoom(displayNameFrom(body)) }, 201);
+    return json({
+      data: await repository.createRoom(displayNameFrom(body), crewColorFrom(body)),
+    }, 201);
   }
 
   const roomParticipantsMatch = pathname.match(/^\/api\/rooms\/([^/]+)\/participants$/);
@@ -267,11 +451,13 @@ async function handleApi(
     const result = await repository.joinRoom(
       roomCode(decodeURIComponent(roomParticipantsMatch[1])),
       displayNameFrom(body),
+      crewColorFrom(body),
     );
     broadcast(result.room.id, {
       type: "player_joined",
       participantId: result.participant.id,
       displayName: result.participant.displayName,
+      crewColor: result.participant.crewColor,
       role: result.participant.role,
     });
     return json({ data: result }, 201);
@@ -295,7 +481,8 @@ async function handleApi(
       roomCode(decodeURIComponent(roomSessionsMatch[1])),
       bearerToken(request),
       quizService.config.questionCount,
-      quizService.config.answerTimeSeconds,
+      quizService.config.answerTimeSecondsByQuestion,
+      FIRST_QUESTION_START_DELAY_MS,
     );
     broadcast(result.roomId, { type: "host_started", session: result });
     // startSessionの時点で1問目(index 0)がすでに開始されているので、
@@ -336,12 +523,15 @@ async function handleApi(
       const score = await quizService.scoreAnswers(
         source.session.questionCount,
         selectedOptions,
-        choiceOrderVariant(source.session),
+        participantChoiceOrderVariant(source.session, participant.participantId),
+        questionSetVersionForChoiceOrder(source.session.choiceOrderVersion),
+        participant.questions,
       );
       const responseTimes = participant.answers.map((answer) => answer.responseTimeMs);
       return {
         participantId: participant.participantId,
         displayName: participant.displayName,
+        crewColor: participant.crewColor,
         role: participant.role,
         ...score,
         averageResponseTimeMs: responseTimes.length
@@ -382,6 +572,32 @@ async function handleApi(
       0,
     );
     const possibleAnswerCount = participants.length * source.session.questionCount;
+    const teamPower = participants.length
+      ? Math.round(
+        participants.reduce((sum, participant) => sum + participant.power, 0) /
+          participants.length,
+      )
+      : 0;
+    const teamSafety = safetyFromCategoryScores(Object.values(teamCategoryScores));
+    const sharedParticipants = source.participants.map((sourceParticipant) => {
+      const participant = participants.find((candidate) =>
+        candidate.participantId === sourceParticipant.participantId
+      );
+      if (!participant) {
+        throw new ApiError(500, "RESULT_PARTICIPANT_MISSING", "Participant result is missing");
+      }
+      const isRequester = participant.participantId === source.requesterParticipantId;
+      const published = sourceParticipant.resultPublished;
+      const identity = {
+        participantId: participant.participantId,
+        displayName: participant.displayName,
+        crewColor: participant.crewColor,
+        role: participant.role,
+        isRequester,
+        published,
+      };
+      return isRequester || published ? { ...identity, ...participant } : identity;
+    });
     const results: SessionResults = {
       sessionId: source.session.id,
       questionCount: source.session.questionCount,
@@ -393,28 +609,49 @@ async function handleApi(
         completionRate: possibleAnswerCount
           ? Math.round((answeredCount / possibleAnswerCount) * 100)
           : 0,
-        power: participants.length
-          ? Math.round(
-            participants.reduce((sum, participant) => sum + participant.power, 0) /
-              participants.length,
-          )
-          : 0,
-        safety: safetyFromCategoryScores(Object.values(teamCategoryScores)),
+        detailsAvailable: true,
+        power: teamPower,
+        safety: teamSafety,
         categoryScores: teamCategoryScores,
       },
-      participants,
+      participants: sharedParticipants,
     };
     return json({ data: results });
   }
 
+  const resultPublicationMatch = pathname.match(
+    /^\/api\/sessions\/([^/]+)\/results\/publication$/,
+  );
+  if (request.method === "PUT" && resultPublicationMatch) {
+    const body = await readJsonObject(request);
+    const result = await repository.setResultPublication(
+      sessionId(decodeURIComponent(resultPublicationMatch[1])),
+      bearerToken(request),
+      publishedFrom(body),
+    );
+    broadcast(result.roomId, {
+      type: "result_publication_changed",
+      published: result.published,
+    });
+    return json({ data: { published: result.published } });
+  }
+
   const sessionMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
   if (request.method === "GET" && sessionMatch) {
+    const accessToken = bearerToken(request);
+    const result = await repository.getSessionForParticipant(
+      sessionId(decodeURIComponent(sessionMatch[1])),
+      accessToken,
+      quizService.config.reviewTimeSeconds,
+    );
+    if (needsQuestionTimer(result)) {
+      scheduleQuestionAdvance(repository, result, quizService.config.reviewTimeSeconds * 1000);
+    }
     return json({
-      data: await repository.getSessionForParticipant(
-        sessionId(decodeURIComponent(sessionMatch[1])),
-        bearerToken(request),
-        quizService.config.reviewTimeSeconds,
-      ),
+      data: {
+        ...result,
+        sessionAuthToken: await quizService.createSessionAuthToken(result.id, accessToken),
+      },
     });
   }
 
@@ -423,11 +660,18 @@ async function handleApi(
   );
   if (request.method === "POST" && multiplayerQuizStartMatch) {
     const requestedIndex = questionIndex(multiplayerQuizStartMatch[2]);
-    const session = await repository.getSessionForParticipant(
-      sessionId(multiplayerQuizStartMatch[1]),
-      bearerToken(request),
-      quizService.config.reviewTimeSeconds,
+    const requestedSessionId = sessionId(multiplayerQuizStartMatch[1]);
+    const accessToken = bearerToken(request);
+    const body = await readJsonObject(request);
+    const authorization = await loadAuthorizedSession(
+      repository,
+      quizService,
+      requestedSessionId,
+      accessToken,
+      sessionAuthTokenFrom(body),
+      sessionAuthMetrics,
     );
+    const session = authorization.session;
     if (
       session.status === "cancelled" || session.currentQuestionIndex === null ||
       requestedIndex > session.currentQuestionIndex || requestedIndex >= session.questionCount
@@ -439,18 +683,32 @@ async function handleApi(
       );
     }
 
-    const body = await readJsonObject(request);
+    const plan = session.choiceOrderVersion >= 4
+      ? await questionPlanCache.get(session.id, accessToken)
+      : null;
+    const selectedQuestion = plan?.questions[requestedIndex];
+    if (plan && !selectedQuestion) {
+      throw new ApiError(404, "QUIZ_QUESTION_NOT_FOUND", "Stored quiz question not found");
+    }
     const revealAt = session.status === "active" &&
         requestedIndex === session.currentQuestionIndex && session.questionStartedAt
       ? Date.parse(session.questionStartedAt) + session.answerTimeSeconds * 1000
       : Date.now();
     return json({
-      data: await quizService.startQuestion(
-        requestedIndex,
-        quizTokenFrom(body, "progressToken"),
-        revealAt,
-        choiceOrderVariant(session),
-      ),
+      data: {
+        ...await quizService.startQuestion(
+          requestedIndex,
+          quizTokenFrom(body, "progressToken"),
+          revealAt,
+          plan
+            ? participantChoiceOrderVariant(session, plan.participantId)
+            : choiceOrderVariant(session),
+          session.answerTimeSeconds,
+          questionSetVersionForChoiceOrder(session.choiceOrderVersion),
+          selectedQuestion,
+        ),
+        sessionAuthToken: authorization.token,
+      },
     });
   }
 
@@ -475,22 +733,75 @@ async function handleApi(
     return json({ data: result });
   }
 
+  const multiplayerQuizGradeMatch = pathname.match(
+    /^\/api\/sessions\/([^/]+)\/quiz\/questions\/([^/]+)\/grade$/,
+  );
+  if (request.method === "POST" && multiplayerQuizGradeMatch) {
+    const requestedIndex = questionIndex(multiplayerQuizGradeMatch[2]);
+    const requestedSessionId = sessionId(multiplayerQuizGradeMatch[1]);
+    const accessToken = bearerToken(request);
+    const body = await readJsonObject(request);
+    const authorization = await loadAuthorizedSession(
+      repository,
+      quizService,
+      requestedSessionId,
+      accessToken,
+      sessionAuthTokenFrom(body),
+      sessionAuthMetrics,
+    );
+    const session = authorization.session;
+    if (session.currentQuestionIndex === null || requestedIndex > session.currentQuestionIndex) {
+      throw new ApiError(
+        409,
+        "QUESTION_NOT_AVAILABLE",
+        "This question is not available in the room session",
+      );
+    }
+    const trustedRevealAt = requestedIndex < session.currentQuestionIndex ||
+        session.status === "completed"
+      ? Date.now()
+      : session.questionReviewStartedAt
+      ? Date.parse(session.questionReviewStartedAt)
+      : undefined;
+    const plan = session.choiceOrderVersion >= 4
+      ? await questionPlanCache.get(session.id, accessToken)
+      : null;
+    const selectedQuestion = plan?.questions[requestedIndex];
+    if (plan && !selectedQuestion) {
+      throw new ApiError(404, "QUIZ_QUESTION_NOT_FOUND", "Stored quiz question not found");
+    }
+    return json({
+      data: {
+        ...await quizService.gradeQuestion(
+          requestedIndex,
+          quizTokenFrom(body, "questionToken"),
+          quizSelectedOptionFrom(body),
+          trustedRevealAt,
+          selectedQuestion,
+        ),
+        sessionAuthToken: authorization.token,
+      },
+    });
+  }
+
   const answerMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/answers\/([^/]+)$/);
   if (request.method === "PUT" && answerMatch) {
     const body = await readJsonObject(request);
+    const requestedSessionId = sessionId(answerMatch[1]);
+    const requestedQuestionIndex = questionIndex(answerMatch[2]);
     const result = await repository.submitAnswer(
-      sessionId(answerMatch[1]),
+      requestedSessionId,
       bearerToken(request),
-      questionIndex(answerMatch[2]),
+      requestedQuestionIndex,
       selectedOptionFrom(body),
     );
-    // 全員がこの問題に回答し終えていたら、制限時間を待たずに答え合わせへ進める。
-    const allAnswered = await repository.haveAllParticipantsAnswered(
-      result.gameSessionId,
-      result.questionIndex,
-    );
-    if (allAnswered) {
-      triggerEarlyQuestionEnd(result.gameSessionId, result.questionIndex);
+    if (result.allParticipantsAnswered) {
+      await triggerEarlyQuestionEnd(
+        repository,
+        requestedSessionId,
+        requestedQuestionIndex,
+        quizService.config.reviewTimeSeconds * 1000,
+      );
     }
     return json({ data: result });
   }
@@ -515,6 +826,8 @@ export function createApp(
   const staticRoot = options.staticRoot ?? "public";
   const assetRoot = options.assetRoot ?? "assets";
   const quizService = options.quizService ?? createQuizService();
+  const questionPlanCache = new ParticipantQuestionPlanCache(repository);
+  const sessionAuthMetrics = new SessionAuthMetrics();
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -542,7 +855,14 @@ export function createApp(
 
     if (pathname.startsWith("/api/")) {
       try {
-        return await handleApi(request, repository, quizService);
+        return await handleApi(
+          request,
+          repository,
+          quizService,
+          questionPlanCache,
+          sessionAuthMetrics,
+          options.databaseMetrics,
+        );
       } catch (error) {
         if (error instanceof ApiError) return apiErrorResponse(error);
         if (error instanceof URIError) {
@@ -561,10 +881,20 @@ export function createApp(
     }
 
     if (pathname.startsWith("/assets/")) {
+      const assetResponse = await serveDir(request, {
+        fsRoot: assetRoot,
+        urlRoot: "assets",
+        showDirListing: false,
+        quiet: true,
+      });
+      if (assetResponse.status !== 404) return secureStaticResponse(assetResponse);
+
+      // Some deploy targets keep browser assets under public/assets instead.
+      await assetResponse.body?.cancel();
       return secureStaticResponse(
         await serveDir(request, {
-          fsRoot: assetRoot,
-          urlRoot: "assets",
+          fsRoot: staticRoot,
+          urlRoot: "",
           showDirListing: false,
           quiet: true,
         }),

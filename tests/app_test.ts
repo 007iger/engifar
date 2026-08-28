@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createApp } from "../src/app.ts";
+import { QUIZ_QUESTION_BANK } from "../data/quiz_question_bank.ts";
 import { ApiError } from "../src/errors.ts";
-import { createQuizService } from "../src/quiz.ts";
+import { createQuizService, questionSetVersionForChoiceOrder } from "../src/quiz.ts";
 import type {
   AnswerSummary,
   AuthenticatedParticipant,
@@ -9,6 +10,7 @@ import type {
   GameRepository,
   GameSessionSummary,
   MembershipResult,
+  ParticipantQuestionPlan,
   RoomDetail,
   RoomSummary,
   SessionResultSource,
@@ -29,6 +31,7 @@ const membership: MembershipResult = {
   participant: {
     id: "33333333-3333-4333-8333-333333333333",
     displayName: "テストユーザー",
+    crewColor: "#54d37c",
     role: "host",
     joinedAt: NOW,
   },
@@ -43,25 +46,33 @@ const session: GameSessionSummary = {
   questionCount: 12,
   choiceOrderVersion: 2,
   answerTimeSeconds: 15,
+  questionAnswerTimeSeconds: Array(12).fill(15),
   currentQuestionIndex: 0,
   questionStartedAt: NOW,
+  questionReviewStartedAt: null,
+  reviewEndsAt: null,
   startedAt: NOW,
   finishedAt: null,
 };
 
 class FakeRepository implements GameRepository {
   createdDisplayName: string | null = null;
+  createdCrewColor: string | null = null;
   joinedRoomCode: string | null = null;
   submittedOption: number | null = null;
   startedQuestionCount: number | null = null;
-  startedAnswerTimeSeconds: number | null = null;
+  startedAnswerTimeSeconds: readonly number[] | null = null;
+  startedDelayMs: number | null = null;
   sessionToStart: GameSessionSummary = session;
+  sessionForParticipant: GameSessionSummary = session;
   sessionResultChoiceOrderVersion = 2;
   resultRequesterParticipantId = membership.participant.id;
   resultParticipants: SessionResultSource["participants"] = [{
     participantId: membership.participant.id,
     displayName: membership.participant.displayName,
+    crewColor: membership.participant.crewColor,
     role: membership.participant.role,
+    resultPublished: false,
     answers: [
       { questionIndex: 0, selectedOption: 0, responseTimeMs: 500 },
       { questionIndex: 1, selectedOption: 3, responseTimeMs: 700 },
@@ -72,12 +83,17 @@ class FakeRepository implements GameRepository {
     return Promise.resolve();
   }
 
-  createRoom(displayName: string): Promise<MembershipResult> {
+  questionPlanReadCount = 0;
+  sessionAuthenticationReadCount = 0;
+  sessionSnapshotReadCount = 0;
+
+  createRoom(displayName: string, crewColor: string): Promise<MembershipResult> {
     this.createdDisplayName = displayName;
+    this.createdCrewColor = crewColor;
     return Promise.resolve(membership);
   }
 
-  joinRoom(code: string, _displayName: string): Promise<MembershipResult> {
+  joinRoom(code: string, _displayName: string, _crewColor: string): Promise<MembershipResult> {
     this.joinedRoomCode = code;
     return Promise.resolve(membership);
   }
@@ -114,10 +130,12 @@ class FakeRepository implements GameRepository {
     _code: string,
     _accessToken: string,
     questionCount: number,
-    answerTimeSeconds: number,
+    answerTimeSeconds: readonly number[],
+    startDelayMs: number,
   ): Promise<GameSessionSummary> {
     this.startedQuestionCount = questionCount;
     this.startedAnswerTimeSeconds = answerTimeSeconds;
+    this.startedDelayMs = startDelayMs;
     return Promise.resolve(this.sessionToStart);
   }
 
@@ -125,10 +143,33 @@ class FakeRepository implements GameRepository {
     _sessionId: string,
     accessToken: string,
   ): Promise<GameSessionSummary> {
+    this.sessionAuthenticationReadCount += 1;
     if (accessToken !== TOKEN) {
       throw new ApiError(403, "PARTICIPANT_REQUIRED", "A valid participant token is required");
     }
-    return Promise.resolve(session);
+    return Promise.resolve(this.sessionForParticipant);
+  }
+
+  getSessionSnapshot(): Promise<GameSessionSummary> {
+    this.sessionSnapshotReadCount += 1;
+    return Promise.resolve(this.sessionForParticipant);
+  }
+
+  getParticipantQuestionPlan(
+    _sessionId: string,
+    accessToken: string,
+  ): Promise<ParticipantQuestionPlan> {
+    this.questionPlanReadCount += 1;
+    if (accessToken !== TOKEN) {
+      throw new ApiError(403, "PARTICIPANT_REQUIRED", "Invalid participant token");
+    }
+    return Promise.resolve({
+      participantId: membership.participant.id,
+      questions: QUIZ_QUESTION_BANK.map((source) => ({
+        ...source,
+        choices: [...source.choices],
+      })),
+    });
   }
 
   getSessionResultSource(
@@ -148,6 +189,20 @@ class FakeRepository implements GameRepository {
       requesterParticipantId: this.resultRequesterParticipantId,
       participants: this.resultParticipants,
     });
+  }
+
+  publishedResult: boolean | null = null;
+
+  setResultPublication(
+    _sessionId: string,
+    accessToken: string,
+    published: boolean,
+  ): Promise<{ roomId: string; published: boolean }> {
+    if (accessToken !== TOKEN) {
+      throw new ApiError(403, "RESULT_PUBLICATION_FORBIDDEN", "Invalid participant token");
+    }
+    this.publishedResult = published;
+    return Promise.resolve({ roomId: membership.room.id, published });
   }
 
   startQuestion(
@@ -173,6 +228,25 @@ class FakeRepository implements GameRepository {
       selectedOption,
       responseTimeMs: 500,
       answeredAt: NOW,
+      allParticipantsAnswered: this.allParticipantsAnsweredOnSubmit,
+    });
+  }
+
+  allParticipantsAnsweredOnSubmit = false;
+  reviewedQuestionIndexes: number[] = [];
+
+  beginQuestionReview(
+    _sessionId: string,
+    questionIndex: number,
+    reviewTimeMs: number,
+  ): Promise<GameSessionSummary | null> {
+    this.reviewedQuestionIndexes.push(questionIndex);
+    const reviewStartedAt = new Date().toISOString();
+    return Promise.resolve({
+      ...session,
+      currentQuestionIndex: questionIndex,
+      questionReviewStartedAt: reviewStartedAt,
+      reviewEndsAt: new Date(Date.parse(reviewStartedAt) + reviewTimeMs).toISOString(),
     });
   }
 
@@ -189,12 +263,6 @@ class FakeRepository implements GameRepository {
 
   completeSessionAutomatically(_sessionId: string): Promise<GameSessionSummary | null> {
     return Promise.resolve({ ...session, status: "completed", finishedAt: NOW });
-  }
-
-  allAnswered = false;
-
-  haveAllParticipantsAnswered(_sessionId: string, _questionIndex: number): Promise<boolean> {
-    return Promise.resolve(this.allAnswered);
   }
 
   disconnectedParticipantIds: string[] = [];
@@ -228,14 +296,56 @@ Deno.test("GET /api/health reports a healthy database", async () => {
   assert.deepEqual(await response.json(), { status: "ok", database: "up" });
 });
 
+Deno.test("GET /api/health exposes database and question-plan metrics when configured", async () => {
+  const response = await createApp(new FakeRepository(), {
+    databaseMetrics: () => ({
+      queries: {
+        total: 12,
+        failed: 1,
+        inFlight: 0,
+        totalDurationMs: 45.5,
+        maxDurationMs: 8.2,
+        byOperation: {
+          select: 8,
+          insert: 1,
+          update: 1,
+          delete: 0,
+          transaction: 2,
+          other: 0,
+        },
+      },
+      pool: { totalConnections: 2, idleConnections: 1, waitingRequests: 0 },
+    }),
+  })(new Request("http://localhost/api/health"));
+
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.metrics.database.queries.total, 12);
+  assert.deepEqual(payload.metrics.questionPlanCache, {
+    hits: 0,
+    misses: 0,
+    entries: 0,
+    hitRate: 0,
+  });
+  assert.deepEqual(payload.metrics.sessionAuth, {
+    signedTokenHits: 0,
+    databaseFallbacks: 0,
+    hitRate: 0,
+  });
+});
+
 Deno.test("POST /api/rooms trims the display name", async () => {
   const repository = new FakeRepository();
   const response = await createApp(repository)(
-    jsonRequest("/api/rooms", "POST", { displayName: "  テストユーザー  " }),
+    jsonRequest("/api/rooms", "POST", {
+      displayName: "  テストユーザー  ",
+      crewColor: "#54D37C",
+    }),
   );
 
   assert.equal(response.status, 201);
   assert.equal(repository.createdDisplayName, "テストユーザー");
+  assert.equal(repository.createdCrewColor, "#54d37c");
   assert.equal((await response.json()).data.room.code, "ABC234");
 });
 
@@ -246,6 +356,15 @@ Deno.test("POST /api/rooms requires JSON", async () => {
 
   assert.equal(response.status, 415);
   assert.equal((await response.json()).error.code, "JSON_REQUIRED");
+});
+
+Deno.test("POST /api/rooms rejects an invalid crew color", async () => {
+  const response = await createApp(new FakeRepository())(
+    jsonRequest("/api/rooms", "POST", { displayName: "tester", crewColor: "red" }),
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, "INVALID_CREW_COLOR");
 });
 
 Deno.test("POST /api/rooms limits streamed JSON without Content-Length", async () => {
@@ -270,7 +389,10 @@ Deno.test("POST /api/rooms limits streamed JSON without Content-Length", async (
 Deno.test("joining a room normalizes its code", async () => {
   const repository = new FakeRepository();
   const response = await createApp(repository)(
-    jsonRequest("/api/rooms/abc234/participants", "POST", { displayName: "player" }),
+    jsonRequest("/api/rooms/abc234/participants", "POST", {
+      displayName: "player",
+      crewColor: "#5ca9ff",
+    }),
   );
 
   assert.equal(response.status, 201);
@@ -336,7 +458,11 @@ Deno.test("starting a room uses the quiz question count and answer time", async 
 
   assert.equal(response.status, 201);
   assert.equal(repository.startedQuestionCount, quizService.config.questionCount);
-  assert.equal(repository.startedAnswerTimeSeconds, 7);
+  assert.deepEqual(
+    repository.startedAnswerTimeSeconds,
+    Array(quizService.config.questionCount).fill(7),
+  );
+  assert.equal(repository.startedDelayMs, 3_000);
 });
 
 Deno.test("a participant can retrieve the shared room session", async () => {
@@ -367,6 +493,7 @@ Deno.test("participants can retrieve ranked shared results", async () => {
     session.questionCount,
     selectedOptions,
     SESSION_ID,
+    questionSetVersionForChoiceOrder(session.choiceOrderVersion),
   );
 
   assert.equal(response.status, 200);
@@ -376,6 +503,8 @@ Deno.test("participants can retrieve ranked shared results", async () => {
   assert.equal(results.participants[0].correctCount, expected.correctCount);
   assert.equal(results.participants[0].power, expected.power);
   assert.equal(results.participants[0].averageResponseTimeMs, 600);
+  assert.equal(results.participants[0].isRequester, true);
+  assert.equal(results.participants[0].published, false);
   assert.equal(results.personal.participantId, membership.participant.id);
   assert.equal(results.team.participantCount, 1);
   assert.equal(results.team.answeredCount, 2);
@@ -408,7 +537,9 @@ Deno.test("personal and team results are derived from all stored participant ans
     {
       participantId: secondParticipantId,
       displayName: "未回答ユーザー",
+      crewColor: "#5ca9ff",
       role: "player",
+      resultPublished: false,
       answers: [],
     },
   ];
@@ -428,6 +559,157 @@ Deno.test("personal and team results are derived from all stored participant ans
   assert.equal(results.team.answeredCount, 2);
   assert.equal(results.team.possibleAnswerCount, session.questionCount * 2);
   assert.equal(results.team.completionRate, 8);
+  assert.equal(results.team.detailsAvailable, true);
+  assert.equal(typeof results.team.power, "number");
+  assert.equal(typeof results.team.safety, "number");
+  assert.ok(Object.keys(results.team.categoryScores).length > 0);
+});
+
+Deno.test("the shared team result is identical for every requester", async () => {
+  const repository = new FakeRepository();
+  const firstParticipantId = repository.resultParticipants[0].participantId;
+  const secondParticipantId = "55555555-5555-4555-8555-555555555555";
+  repository.resultParticipants.push({
+    participantId: secondParticipantId,
+    displayName: "別の回答者",
+    crewColor: "#5ca9ff",
+    role: "player",
+    resultPublished: false,
+    answers: [{ questionIndex: 0, selectedOption: 1, responseTimeMs: 400 }],
+  });
+  const app = createApp(repository, {
+    quizService: createQuizService({ secret: "shared-team-flight-secret-that-is-32-bytes" }),
+  });
+
+  repository.resultRequesterParticipantId = firstParticipantId;
+  const firstResponse = await app(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const firstResults = (await firstResponse.json()).data;
+
+  repository.resultRequesterParticipantId = secondParticipantId;
+  const secondResponse = await app(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const secondResults = (await secondResponse.json()).data;
+
+  assert.equal(firstResults.personal.participantId, firstParticipantId);
+  assert.equal(secondResults.personal.participantId, secondParticipantId);
+  assert.deepEqual(firstResults.team, secondResults.team);
+});
+
+Deno.test("other participants' results are private until they publish them", async () => {
+  const repository = new FakeRepository();
+  const secondParticipantId = "55555555-5555-4555-8555-555555555555";
+  repository.resultParticipants.push({
+    participantId: secondParticipantId,
+    displayName: "非公開ユーザー",
+    crewColor: "#5ca9ff",
+    role: "player",
+    resultPublished: false,
+    answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 400 }],
+  });
+  const response = await createApp(repository)(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const results = (await response.json()).data;
+  const privateResult = results.participants.find((entry: { participantId: string }) =>
+    entry.participantId === secondParticipantId
+  );
+
+  assert.deepEqual(privateResult, {
+    participantId: secondParticipantId,
+    displayName: "非公開ユーザー",
+    crewColor: "#5ca9ff",
+    role: "player",
+    isRequester: false,
+    published: false,
+  });
+});
+
+Deno.test("two-person team aggregates include every participant", async () => {
+  const repository = new FakeRepository();
+  repository.resultParticipants[0].resultPublished = true;
+  repository.resultParticipants.push({
+    participantId: "55555555-5555-4555-8555-555555555555",
+    displayName: "公開ユーザー",
+    crewColor: "#5ca9ff",
+    role: "player",
+    resultPublished: true,
+    answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 400 }],
+  });
+  const response = await createApp(repository)(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const results = (await response.json()).data;
+  const publishedResult = results.participants.find((entry: { displayName: string }) =>
+    entry.displayName === "公開ユーザー"
+  );
+
+  assert.equal(results.team.detailsAvailable, true);
+  assert.equal(typeof results.team.power, "number");
+  assert.equal(typeof publishedResult.power, "number");
+});
+
+Deno.test("team aggregates stay available while individual results remain private", async () => {
+  const repository = new FakeRepository();
+  repository.resultParticipants[0].resultPublished = true;
+  repository.resultParticipants.push(
+    {
+      participantId: "55555555-5555-4555-8555-555555555555",
+      displayName: "公開ユーザー",
+      crewColor: "#5ca9ff",
+      role: "player",
+      resultPublished: true,
+      answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 400 }],
+    },
+    {
+      participantId: "66666666-6666-4666-8666-666666666666",
+      displayName: "非公開ユーザー",
+      crewColor: "#ff665f",
+      role: "player",
+      resultPublished: false,
+      answers: [{ questionIndex: 0, selectedOption: 0, responseTimeMs: 500 }],
+    },
+  );
+  const response = await createApp(repository)(
+    new Request(`http://localhost/api/sessions/${SESSION_ID}/results`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    }),
+  );
+  const results = (await response.json()).data;
+  const privateResult = results.participants.find((entry: { displayName: string }) =>
+    entry.displayName === "非公開ユーザー"
+  );
+
+  assert.equal(results.team.participantCount, 3);
+  assert.equal(results.team.detailsAvailable, true);
+  assert.equal(typeof results.team.power, "number");
+  assert.equal(typeof results.team.safety, "number");
+  assert.ok(Object.keys(results.team.categoryScores).length > 0);
+  assert.equal(privateResult.power, undefined);
+});
+
+Deno.test("participants can publish their own completed result", async () => {
+  const repository = new FakeRepository();
+  const response = await createApp(repository)(jsonRequest(
+    `/api/sessions/${SESSION_ID}/results/publication`,
+    "PUT",
+    { published: true },
+    TOKEN,
+  ));
+
+  assert.equal(response.status, 200);
+  assert.equal(repository.publishedResult, true);
+  assert.deepEqual((await response.json()).data, { published: true });
 });
 
 Deno.test("room quiz reveal time follows the shared session clock", async () => {
@@ -470,6 +752,54 @@ Deno.test("room quiz reveal time follows the shared session clock", async () => 
   assert.equal(grade.status, 200);
 });
 
+Deno.test("version 4 room quiz serves the participant's DB-selected question", async () => {
+  const repository = new FakeRepository();
+  repository.sessionForParticipant = {
+    ...session,
+    choiceOrderVersion: 4,
+    answerTimeSeconds: 15,
+    questionAnswerTimeSeconds: Array(session.questionCount).fill(15),
+  };
+  const quizService = createQuizService({
+    secret: "db-question-test-secret-that-is-at-least-32-bytes",
+  });
+  const app = createApp(repository, { quizService });
+  const attemptResponse = await app(
+    new Request("http://localhost/api/quiz/attempts", { method: "POST" }),
+  );
+  const { progressToken } = (await attemptResponse.json()).data;
+
+  const response = await app(jsonRequest(
+    `/api/sessions/${SESSION_ID}/quiz/questions/0/start`,
+    "POST",
+    { progressToken },
+    TOKEN,
+  ));
+  const started = (await response.json()).data;
+
+  assert.equal(response.status, 200);
+  assert.equal(started.question.id, QUIZ_QUESTION_BANK[0].id);
+  assert.equal(started.question.category, QUIZ_QUESTION_BANK[0].category);
+  assert.equal(started.question.technology, QUIZ_QUESTION_BANK[0].technology);
+  assert.equal(started.answerTimeSeconds, 15);
+  assert.equal(Object.hasOwn(started.question, "answer"), false);
+
+  const gradeResponse = await app(jsonRequest(
+    `/api/sessions/${SESSION_ID}/quiz/questions/0/grade`,
+    "POST",
+    {
+      questionToken: started.questionToken,
+      sessionAuthToken: started.sessionAuthToken,
+      selectedOption: 0,
+    },
+    TOKEN,
+  ));
+  assert.equal(gradeResponse.status, 200);
+  assert.equal(repository.questionPlanReadCount, 1);
+  assert.equal(repository.sessionAuthenticationReadCount, 1);
+  assert.equal(repository.sessionSnapshotReadCount, 1);
+});
+
 Deno.test("answer option must be one of four zero-based indexes", async () => {
   const response = await createApp(new FakeRepository())(
     jsonRequest(
@@ -500,19 +830,64 @@ Deno.test("an answer is passed to the repository", async () => {
   assert.equal((await response.json()).data.responseTimeMs, 500);
 });
 
-Deno.test("全員回答済みでも解答APIは正常にレスポンスを返す", async () => {
+Deno.test("the last participant answer starts review immediately", async () => {
   const repository = new FakeRepository();
-  repository.allAnswered = true;
-  const response = await createApp(repository)(
+  repository.allParticipantsAnsweredOnSubmit = true;
+  const quizService = createQuizService({
+    secret: "early-review-test-secret-that-is-at-least-32-bytes",
+    reviewTimeSeconds: 0,
+  });
+  const response = await createApp(repository, { quizService })(
     jsonRequest(
       `/api/sessions/${SESSION_ID}/answers/0`,
       "PUT",
-      { selectedOption: 1 },
+      { selectedOption: 2 },
       TOKEN,
     ),
   );
 
   assert.equal(response.status, 200);
+  assert.deepEqual(repository.reviewedQuestionIndexes, [0]);
+});
+
+Deno.test("room grading allows an early reveal after DB review starts", async () => {
+  let now = 1_000;
+  const quizService = createQuizService({
+    secret: "early-grade-test-secret-that-is-at-least-32-bytes",
+    now: () => now,
+  });
+  const repository = new FakeRepository();
+  repository.sessionForParticipant = {
+    ...session,
+    answerTimeSeconds: 10,
+    questionStartedAt: new Date(now).toISOString(),
+  };
+  const app = createApp(repository, { quizService });
+  const attempt = (await (await app(
+    new Request("http://localhost/api/quiz/attempts", { method: "POST" }),
+  )).json()).data;
+  const start = (await (await app(jsonRequest(
+    `/api/sessions/${SESSION_ID}/quiz/questions/0/start`,
+    "POST",
+    { progressToken: attempt.progressToken },
+    TOKEN,
+  ))).json()).data;
+
+  now = 2_000;
+  repository.sessionForParticipant = {
+    ...repository.sessionForParticipant,
+    questionReviewStartedAt: new Date(now).toISOString(),
+    reviewEndsAt: new Date(now + 5_000).toISOString(),
+  };
+  const gradeResponse = await app(jsonRequest(
+    `/api/sessions/${SESSION_ID}/quiz/questions/0/grade`,
+    "POST",
+    { questionToken: start.questionToken, selectedOption: 0 },
+    TOKEN,
+  ));
+
+  assert.equal(gradeResponse.status, 200);
+  assert.equal(typeof (await gradeResponse.json()).data.correct, "boolean");
 });
 
 Deno.test("quiz API keeps the answer out of question responses", async () => {
@@ -550,7 +925,7 @@ Deno.test("quiz API keeps the answer out of question responses", async () => {
   assert.equal(earlyGrade.status, 409);
   assert.equal((await earlyGrade.json()).error.code, "QUIZ_REVIEW_NOT_READY");
 
-  now += 10_000;
+  now += 15_000;
   const gradeResponse = await app(
     jsonRequest("/api/quiz/questions/0/grade", "POST", {
       questionToken: start.questionToken,

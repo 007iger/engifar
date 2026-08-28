@@ -16,8 +16,11 @@ function makeSession(overrides: Partial<GameSessionSummary> = {}): GameSessionSu
     questionCount: 2,
     choiceOrderVersion: 2,
     answerTimeSeconds: 0, // テストなので実質待ち時間なし
+    questionAnswerTimeSeconds: [0, 0],
     currentQuestionIndex: 0,
-    questionStartedAt: NOW,
+    questionStartedAt: new Date().toISOString(),
+    questionReviewStartedAt: null,
+    reviewEndsAt: null,
     startedAt: NOW,
     finishedAt: null,
     ...overrides,
@@ -27,6 +30,21 @@ function makeSession(overrides: Partial<GameSessionSummary> = {}): GameSessionSu
 class RecordingRepository implements Partial<GameRepository> {
   advancedFrom: number[] = [];
   completedSessionIds: string[] = [];
+  reviewStartedFor: number[] = [];
+
+  beginQuestionReview(
+    _sessionId: string,
+    questionIndex: number,
+    reviewTimeMs: number,
+  ): Promise<GameSessionSummary | null> {
+    this.reviewStartedFor.push(questionIndex);
+    const reviewStartedAt = new Date().toISOString();
+    return Promise.resolve(makeSession({
+      currentQuestionIndex: questionIndex,
+      questionReviewStartedAt: reviewStartedAt,
+      reviewEndsAt: new Date(Date.parse(reviewStartedAt) + reviewTimeMs).toISOString(),
+    }));
+  }
 
   advanceQuestionAutomatically(
     _sessionId: string,
@@ -81,9 +99,28 @@ Deno.test("回答の有無にかかわらず設定された回答時間を確保
   await new Promise((resolve) => setTimeout(resolve, 70));
   assert.deepEqual((repository as unknown as RecordingRepository).advancedFrom, [0]);
 });
-Deno.test("対象の問題がすでに終わっていれば早期終了は何もしない", () => {
-  const triggered = triggerEarlyQuestionEnd("no-such-session", 0);
+Deno.test("対象の問題がすでに終わっていれば早期終了は何もしない", async () => {
+  const repository = {
+    beginQuestionReview: () => Promise.resolve(null),
+  } as unknown as GameRepository;
+  const triggered = await triggerEarlyQuestionEnd(repository, "no-such-session", 0);
   assert.equal(triggered, false);
+});
+
+Deno.test("全員回答時は残り時間を待たずに答え合わせへ進む", async () => {
+  const repository = new RecordingRepository() as unknown as GameRepository;
+  scheduleQuestionAdvance(
+    repository,
+    makeSession({ currentQuestionIndex: 0, answerTimeSeconds: 10 }),
+    5,
+  );
+
+  const triggered = await triggerEarlyQuestionEnd(repository, SESSION_ID, 0, 5);
+  assert.equal(triggered, true);
+  assert.deepEqual((repository as unknown as RecordingRepository).reviewStartedFor, [0]);
+
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.deepEqual((repository as unknown as RecordingRepository).advancedFrom, [0]);
 });
 
 const WS_ROOM_ID = "ws-room-1";
@@ -92,10 +129,30 @@ const WS_TOKEN = "ws_test_token_that_is_long_enough";
 class WsRecordingRepository implements Partial<GameRepository> {
   advancedFrom: number[] = [];
 
+  beginQuestionReview(
+    _sessionId: string,
+    questionIndex: number,
+    reviewTimeMs: number,
+  ): Promise<GameSessionSummary | null> {
+    const reviewStartedAt = new Date().toISOString();
+    return Promise.resolve(makeSession({
+      currentQuestionIndex: questionIndex,
+      roomId: WS_ROOM_ID,
+      questionReviewStartedAt: reviewStartedAt,
+      reviewEndsAt: new Date(Date.parse(reviewStartedAt) + reviewTimeMs).toISOString(),
+    }));
+  }
+
   authenticateParticipant(): Promise<AuthenticatedParticipant> {
     return Promise.resolve({
       roomId: WS_ROOM_ID,
-      participant: { id: "participant-1", displayName: "tester", role: "host", joinedAt: NOW },
+      participant: {
+        id: "participant-1",
+        displayName: "tester",
+        crewColor: "#54d37c",
+        role: "host",
+        joinedAt: NOW,
+      },
     });
   }
 

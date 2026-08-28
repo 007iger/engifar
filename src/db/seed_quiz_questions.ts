@@ -1,0 +1,109 @@
+import type { Pool } from "pg";
+import { QUIZ_QUESTION_BANK } from "../../data/quiz_question_bank.ts";
+
+async function contentHash(value: unknown): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(value)),
+  );
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function seedQuizQuestions(pool: Pool): Promise<void> {
+  const questionIds = QUIZ_QUESTION_BANK.map((question) => question.id);
+  const categories = [...new Set(QUIZ_QUESTION_BANK.map((question) => question.category))];
+  const questionRows = await Promise.all(QUIZ_QUESTION_BANK.map(async (question) => {
+    const content = {
+      category: question.category,
+      technology: question.technology,
+      difficulty: question.difficulty,
+      weight: question.weight,
+      answer_time_seconds: question.answerTimeSeconds,
+      instruction: question.instruction,
+      question: question.question,
+      choices: question.choices,
+      correct_option: question.answer,
+      explanation: question.explanation,
+    };
+    return {
+      id: question.id,
+      ...content,
+      content_hash: await contentHash(content),
+    };
+  }));
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('engifar_quiz_question_seed'))");
+    await client.query(
+      `INSERT INTO quiz_question (
+         id, category, technology, difficulty, weight, answer_time_seconds, instruction,
+         question, choices, correct_option, explanation, active, updated_at
+       )
+       SELECT question.id, question.category, question.technology, question.difficulty, question.weight,
+         question.answer_time_seconds, question.instruction, question.question,
+         question.choices, question.correct_option, question.explanation, true, now()
+       FROM jsonb_to_recordset($1::jsonb) AS question(
+         id varchar(64), category varchar(32), technology varchar(64), difficulty smallint, weight smallint,
+         answer_time_seconds smallint, instruction text, question text, choices text[],
+         correct_option smallint, explanation text
+       )
+       ON CONFLICT (id) DO UPDATE SET
+         category = EXCLUDED.category,
+         technology = EXCLUDED.technology,
+         difficulty = EXCLUDED.difficulty,
+         weight = EXCLUDED.weight,
+         answer_time_seconds = EXCLUDED.answer_time_seconds,
+         instruction = EXCLUDED.instruction,
+         question = EXCLUDED.question,
+         choices = EXCLUDED.choices,
+         correct_option = EXCLUDED.correct_option,
+         explanation = EXCLUDED.explanation,
+         active = true,
+         updated_at = now()`,
+      [JSON.stringify(questionRows)],
+    );
+    await client.query(
+      `UPDATE quiz_question_revision revision
+       SET active = false
+       FROM jsonb_to_recordset($1::jsonb) AS question(
+         id varchar(64), content_hash char(64)
+       )
+       WHERE revision.question_id = question.id
+         AND revision.content_hash <> question.content_hash
+         AND revision.active`,
+      [JSON.stringify(questionRows)],
+    );
+    await client.query(
+      `INSERT INTO quiz_question_revision (
+         question_id, content_hash, category, technology, difficulty, weight,
+         answer_time_seconds, instruction, question, choices, correct_option, explanation, active
+       )
+       SELECT question.id, question.content_hash, question.category, question.technology,
+         question.difficulty, question.weight, question.answer_time_seconds,
+         question.instruction, question.question, question.choices,
+         question.correct_option, question.explanation, true
+       FROM jsonb_to_recordset($1::jsonb) AS question(
+         id varchar(64), content_hash char(64), category varchar(32), technology varchar(64),
+         difficulty smallint, weight smallint, answer_time_seconds smallint,
+         instruction text, question text, choices text[], correct_option smallint, explanation text
+       )
+       ON CONFLICT (question_id, content_hash) DO UPDATE SET active = true`,
+      [JSON.stringify(questionRows)],
+    );
+    await client.query(
+      `UPDATE quiz_question
+       SET active = false, updated_at = now()
+       WHERE category = ANY($1::varchar[])
+         AND NOT (id = ANY($2::varchar[]))
+         AND active`,
+      [categories, questionIds],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}

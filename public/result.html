@@ -4,9 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
+  <meta name="apple-mobile-web-app-title" content="EngiFar">
+  <link rel="icon" type="image/svg+xml" href="/assets/rogo/EngiFar_rogo.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <title>EngiFar | フライトリザルト</title>
-  <link rel="stylesheet" href="./style.css?v=20260824-rank">
-  <script type="module" src="./script.js?v=20260825-progress-guard"></script>
+  <link rel="stylesheet" href="./style.css?v=20260827-corner-logo">
+  <link rel="stylesheet" href="./quiz-crew-reaction.css?v=20260826-flight-score">
+  <script type="module" src="./script.js?v=20260826-flight-score"></script>
 </head>
 <body>
   <div class="app-shell" id="app" data-page="result" data-outcome="orbit">
@@ -14,7 +19,7 @@
 
     <header class="topbar">
       <a class="brand" href="./index.html" aria-label="EngiFar ホームへ">
-        <span class="brand-mark" aria-hidden="true">E</span>
+        <img class="brand-mark" src="./assets/rogo/EngiFar_rogo.svg" alt="" aria-hidden="true">
         <span><strong>EngiFar</strong><small>FLIGHT RESULT</small></span>
       </a>
       <div class="route-chip route-chip--complete"><span>04</span> RESULT READY</div>
@@ -33,26 +38,46 @@
       </section>
 
       <section class="result-panel" aria-live="polite">
-        <p class="eyebrow" id="result-kicker">MISSION HIGHLIGHT</p>
-        <div class="result-rank-row"><span>FLIGHT RANK</span><strong id="result-rank">大空飛行級</strong></div>
-        <h1 id="result-title">軌道到達！</h1>
-        <p class="result-message" id="result-message">Webの知識が大きな推進力になりました。</p>
-
-        <div class="result-data-grid">
-          <figure class="radar-card" aria-labelledby="radar-caption">
-            <svg class="radar-chart" id="result-radar" viewBox="0 0 360 300" role="img" aria-labelledby="radar-caption"></svg>
-            <figcaption id="radar-caption">6分野スコア</figcaption>
-          </figure>
-          <dl class="result-metrics">
-          <div><dt>出力強度<small>正答率</small></dt><dd><b id="result-power">0</b><span>%</span></dd></div>
-          <div><dt>安全性<small>分野バランス</small></dt><dd><b id="result-safety">0</b><span>%</span></dd></div>
-          <div class="metric-altitude"><dt>到達距離</dt><dd><b id="result-altitude">0</b><span>km</span></dd></div>
-          </dl>
+        <div class="result-view-tabs" id="result-view-tabs" role="tablist" aria-label="リザルト表示" hidden>
+          <button class="result-view-tab is-active" id="result-flight-tab" type="button" role="tab" aria-selected="true" aria-controls="result-flight-pane" data-result-view="flight">フライト結果</button>
+          <button class="result-view-tab" id="result-team-tab" type="button" role="tab" aria-selected="false" aria-controls="crew-results" data-result-view="team" tabindex="-1">チーム結果</button>
         </div>
 
-        <section class="crew-results" id="crew-results" hidden aria-live="polite">
-          <header><span>CREW RESULTS</span><strong>みんなのスコア</strong></header>
+        <section class="result-view-pane" id="result-flight-pane" role="tabpanel" aria-labelledby="result-flight-tab">
+          <p class="eyebrow" id="result-kicker">MISSION HIGHLIGHT</p>
+          <div class="result-rank-row"><span>FLIGHT RANK</span><div class="result-rank-value"><strong id="result-rank">大空飛行級</strong><small id="result-rank-progress">次の等級を計算中</small></div></div>
+          <h1 id="result-title">軌道到達！</h1>
+          <p class="result-message" id="result-message">Webの知識が大きな推進力になりました。</p>
+
+          <div class="result-data-grid">
+            <figure class="radar-card" aria-labelledby="radar-caption">
+              <svg class="radar-chart" id="result-radar" viewBox="0 0 360 300" role="img" aria-labelledby="radar-caption"></svg>
+              <figcaption id="radar-caption">6分野スコア</figcaption>
+            </figure>
+            <dl class="result-metrics">
+            <div><dt>出力強度<small>正答率</small></dt><dd><b id="result-power">0</b><span>%</span></dd></div>
+            <div><dt>安全性<small>分野バランス</small></dt><dd><b id="result-safety">0</b><span>%</span></dd></div>
+            <div class="metric-altitude"><dt><span id="result-distance-label">到達距離</span><small id="result-flight-score">航行スコア 0</small></dt><dd><b id="result-altitude">0</b><span id="result-distance-unit">km</span></dd></div>
+            </dl>
+          </div>
+        </section>
+
+        <section class="crew-results result-view-pane" id="crew-results" role="tabpanel" aria-labelledby="result-team-tab" hidden aria-live="polite">
+          <header><span>CREW RESULTS</span><strong>チームリザルト</strong></header>
           <p id="crew-results-status">共有結果を読み込んでいます…</p>
+          <div class="team-result-overview" id="team-result-overview" hidden>
+            <svg id="team-result-radar" viewBox="0 0 360 300" role="img" aria-label="チームの6分野平均"></svg>
+            <dl>
+              <div><dt>チーム出力</dt><dd id="team-result-power">0%</dd></div>
+              <div><dt>安全性</dt><dd id="team-result-safety">0%</dd></div>
+              <div><dt>回答完了</dt><dd id="team-result-completion">0%</dd></div>
+            </dl>
+          </div>
+          <div class="result-privacy-control">
+            <button class="secondary-button" id="result-publish-button" type="button">自分の結果をチームに公開</button>
+            <button class="secondary-button" id="result-refresh-button" type="button">公開状況を更新</button>
+            <small>公開しない限り、他のメンバーには点数や分野別結果を表示しません。</small>
+          </div>
           <ol id="crew-results-list"></ol>
         </section>
 

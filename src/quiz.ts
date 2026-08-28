@@ -1,17 +1,26 @@
+import legacyQuestionData from "../data/quiz_questions.v1.json" with { type: "json" };
 import questionData from "../data/quiz_questions.json" with { type: "json" };
+import { QUIZ_QUESTION_BANK } from "../data/quiz_question_bank.ts";
 import { ApiError } from "./errors.ts";
 
-const DEFAULT_ANSWER_TIME_SECONDS = 10;
+const DEFAULT_ANSWER_TIME_SECONDS = 15;
 const DEFAULT_REVIEW_TIME_SECONDS = 5;
+const QUESTIONS_PER_ATTEMPT = 24;
 const TOKEN_LIFETIME_MS = 60 * 60 * 1000;
+const SESSION_AUTH_TOKEN_LIFETIME_MS = 60_000;
 export const LEGACY_CHOICE_ORDER_VARIANT = "legacy-v1";
+export const LEGACY_QUESTION_SET_VERSION = 1;
+export const CURRENT_QUESTION_SET_VERSION = 2;
+export const DATABASE_QUESTION_SET_VERSION = 3;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-interface RawQuizQuestion {
+export interface RawQuizQuestion {
   id: string;
   category: string;
+  technology: string;
   weight: number;
+  answerTimeSeconds: number;
   instruction: string;
   question: string;
   choices: readonly string[];
@@ -23,6 +32,7 @@ export interface PublicQuizQuestion {
   id: string;
   index: number;
   category: string;
+  technology: string;
   weight: number;
   instruction: string;
   question: string;
@@ -32,6 +42,7 @@ export interface PublicQuizQuestion {
 export interface QuizConfig {
   questionCount: number;
   answerTimeSeconds: number;
+  answerTimeSecondsByQuestion: readonly number[];
   reviewTimeSeconds: number;
 }
 
@@ -65,20 +76,36 @@ export function safetyFromCategoryScores(values: readonly number[]): number {
   return Math.round(Math.min(100, Math.max(0, mean - 0.5 * Math.sqrt(variance))));
 }
 
-interface TokenPayload {
-  type: "progress" | "question";
+interface QuestionFlowTokenPayload<Type extends "progress" | "question"> {
+  type: Type;
   attemptId: string;
   questionIndex: number;
   expiresAt: number;
   revealAt?: number;
   variantId?: string;
+  questionSetVersion?: number;
+  questionId?: string;
 }
+
+interface SessionAuthTokenPayload {
+  type: "session";
+  sessionId: string;
+  accessTokenHash: string;
+  expiresAt: number;
+}
+
+type TokenPayload =
+  | QuestionFlowTokenPayload<"progress">
+  | QuestionFlowTokenPayload<"question">
+  | SessionAuthTokenPayload;
 
 export interface QuizServiceOptions {
   secret?: string;
   now?: () => number;
   answerTimeSeconds?: number;
   reviewTimeSeconds?: number;
+  /** デモ等で問題数を短縮したい場合に指定する(1〜QUESTIONS_PER_ATTEMPT)。省略時は通常の24問。 */
+  questionCount?: number;
 }
 
 const EXPECTED_CHOICE_COUNT = 4;
@@ -127,11 +154,21 @@ export function validateQuizQuestions(value: unknown): readonly Readonly<RawQuiz
     if (typeof item.weight !== "number" || !Number.isFinite(item.weight) || item.weight <= 0) {
       throw new Error(`Quiz question ${id} has an invalid weight`);
     }
+    if (
+      typeof item.answerTimeSeconds !== "number" ||
+      !Number.isSafeInteger(item.answerTimeSeconds) ||
+      item.answerTimeSeconds < 1 ||
+      item.answerTimeSeconds > 300
+    ) {
+      throw new Error(`Quiz question ${id} has an invalid answerTimeSeconds`);
+    }
 
     return Object.freeze({
       id,
       category: requiredText("category"),
+      technology: requiredText("technology"),
       weight: item.weight,
+      answerTimeSeconds: item.answerTimeSeconds,
       instruction: requiredText("instruction"),
       question: requiredText("question"),
       choices: Object.freeze([...item.choices]),
@@ -141,12 +178,43 @@ export function validateQuizQuestions(value: unknown): readonly Readonly<RawQuiz
   }));
 }
 
+const legacyQuestions = validateQuizQuestions(legacyQuestionData);
 const questions = validateQuizQuestions(questionData);
+const databaseQuestions = validateQuizQuestions(QUIZ_QUESTION_BANK);
+const databaseQuestionsById = new Map(databaseQuestions.map((question) => [question.id, question]));
+const questionSets = new Map<number, readonly Readonly<RawQuizQuestion>[]>([
+  [LEGACY_QUESTION_SET_VERSION, legacyQuestions],
+  [CURRENT_QUESTION_SET_VERSION, questions],
+]);
 
-function questionAt(index: number): Readonly<RawQuizQuestion> {
-  const question = questions[index];
+function questionsForVersion(version: number): readonly Readonly<RawQuizQuestion>[] {
+  const selected = questionSets.get(version);
+  if (!selected) {
+    throw new ApiError(500, "QUIZ_CONFIG_MISMATCH", "Quiz question set version is unsupported");
+  }
+  return selected;
+}
+
+function questionAt(
+  index: number,
+  questionSetVersion = CURRENT_QUESTION_SET_VERSION,
+): Readonly<RawQuizQuestion> {
+  const question = questionsForVersion(questionSetVersion)[index];
   if (!question) {
     throw new ApiError(404, "QUIZ_QUESTION_NOT_FOUND", "Quiz question not found");
+  }
+  return question;
+}
+
+export function questionSetVersionForChoiceOrder(choiceOrderVersion: number): number {
+  if (choiceOrderVersion >= 4) return DATABASE_QUESTION_SET_VERSION;
+  return choiceOrderVersion >= 3 ? CURRENT_QUESTION_SET_VERSION : LEGACY_QUESTION_SET_VERSION;
+}
+
+function databaseQuestion(questionId: string): Readonly<RawQuizQuestion> {
+  const question = databaseQuestionsById.get(questionId);
+  if (!question) {
+    throw new ApiError(500, "QUIZ_CONFIG_MISMATCH", "Stored quiz question is unsupported");
   }
   return question;
 }
@@ -155,8 +223,8 @@ function publicQuestion(
   index: number,
   shuffled: Readonly<RawQuizQuestion>,
 ): PublicQuizQuestion {
-  const { id, category, weight, instruction, question, choices } = shuffled;
-  return { id, index, category, weight, instruction, question, choices };
+  const { id, category, technology, weight, instruction, question, choices } = shuffled;
+  return { id, index, category, technology, weight, instruction, question, choices };
 }
 
 function encodeBase64Url(bytes: Uint8Array): string {
@@ -185,6 +253,13 @@ function randomSecret(): string {
 function isTokenPayload(value: unknown): value is TokenPayload {
   if (!value || typeof value !== "object") return false;
   const payload = value as Record<string, unknown>;
+  if (payload.type === "session") {
+    return typeof payload.sessionId === "string" && payload.sessionId.length > 0 &&
+      payload.sessionId.length <= 64 &&
+      typeof payload.accessTokenHash === "string" &&
+      /^[0-9a-f]{64}$/.test(payload.accessTokenHash) &&
+      typeof payload.expiresAt === "number" && Number.isFinite(payload.expiresAt);
+  }
   return (payload.type === "progress" || payload.type === "question") &&
     typeof payload.attemptId === "string" &&
     Number.isSafeInteger(payload.questionIndex) &&
@@ -195,7 +270,14 @@ function isTokenPayload(value: unknown): value is TokenPayload {
       (typeof payload.revealAt === "number" && Number.isFinite(payload.revealAt))) &&
     (payload.variantId === undefined ||
       (typeof payload.variantId === "string" && payload.variantId.length > 0 &&
-        payload.variantId.length <= 128));
+        payload.variantId.length <= 128)) &&
+    (payload.questionSetVersion === undefined ||
+      payload.questionSetVersion === LEGACY_QUESTION_SET_VERSION ||
+      payload.questionSetVersion === CURRENT_QUESTION_SET_VERSION ||
+      payload.questionSetVersion === DATABASE_QUESTION_SET_VERSION) &&
+    (payload.questionId === undefined ||
+      (typeof payload.questionId === "string" && payload.questionId.length > 0 &&
+        payload.questionId.length <= 64));
 }
 
 export class QuizService {
@@ -216,11 +298,56 @@ export class QuizService {
       ["sign", "verify"],
     );
     this.#now = options.now ?? Date.now;
+    const questionCount = options.questionCount ?? QUESTIONS_PER_ATTEMPT;
+    if (
+      !Number.isInteger(questionCount) || questionCount < 1 || questionCount > QUESTIONS_PER_ATTEMPT
+    ) {
+      throw new Error(`questionCount must be an integer between 1 and ${QUESTIONS_PER_ATTEMPT}`);
+    }
+    const answerTimeSecondsByQuestion = Object.freeze(Array.from(
+      { length: questionCount },
+      () => options.answerTimeSeconds ?? DEFAULT_ANSWER_TIME_SECONDS,
+    ));
+    const reviewTimeSeconds = options.reviewTimeSeconds ?? DEFAULT_REVIEW_TIME_SECONDS;
+    // 0は「答え合わせを待たず即座に次へ進む」という意味で使われるため許可する。
+    if (!Number.isInteger(reviewTimeSeconds) || reviewTimeSeconds < 0 || reviewTimeSeconds > 60) {
+      throw new Error("reviewTimeSeconds must be an integer between 0 and 60");
+    }
     this.config = Object.freeze({
-      questionCount: questions.length,
-      answerTimeSeconds: options.answerTimeSeconds ?? DEFAULT_ANSWER_TIME_SECONDS,
-      reviewTimeSeconds: options.reviewTimeSeconds ?? DEFAULT_REVIEW_TIME_SECONDS,
+      questionCount,
+      answerTimeSeconds: answerTimeSecondsByQuestion[0] ?? DEFAULT_ANSWER_TIME_SECONDS,
+      answerTimeSecondsByQuestion,
+      reviewTimeSeconds,
     });
+  }
+
+  answerTimeSecondsAt(index: number): number {
+    questionAt(index);
+    return this.config.answerTimeSecondsByQuestion[index];
+  }
+
+  async createSessionAuthToken(sessionId: string, accessToken: string): Promise<string> {
+    return await this.#sign({
+      type: "session",
+      sessionId,
+      accessTokenHash: await this.#accessTokenHash(accessToken),
+      expiresAt: this.#now() + SESSION_AUTH_TOKEN_LIFETIME_MS,
+    });
+  }
+
+  async isSessionAuthTokenValid(
+    token: string | null,
+    sessionId: string,
+    accessToken: string,
+  ): Promise<boolean> {
+    if (!token) return false;
+    try {
+      const payload = await this.#verify(token, "session");
+      return payload.sessionId === sessionId &&
+        payload.accessTokenHash === await this.#accessTokenHash(accessToken);
+    } catch {
+      return false;
+    }
   }
 
   async createAttempt(): Promise<{ progressToken: string }> {
@@ -230,6 +357,7 @@ export class QuizService {
         type: "progress",
         attemptId: crypto.randomUUID(),
         questionIndex: 0,
+        questionSetVersion: CURRENT_QUESTION_SET_VERSION,
         expiresAt: now + TOKEN_LIFETIME_MS,
       }),
     };
@@ -240,8 +368,10 @@ export class QuizService {
     progressToken: string,
     revealAt?: number,
     variantId?: string,
+    answerTimeSecondsOverride?: number,
+    questionSetVersionOverride?: number,
+    questionOverride?: Readonly<RawQuizQuestion>,
   ): Promise<QuizQuestionStart> {
-    questionAt(index);
     const progress = await this.#verify(progressToken, "progress");
     if (progress.questionIndex !== index) {
       throw new ApiError(
@@ -252,12 +382,30 @@ export class QuizService {
     }
 
     const now = this.#now();
-    const answerRevealAt = revealAt ?? now + this.config.answerTimeSeconds * 1000;
+    const questionSetVersion = questionSetVersionOverride ?? progress.questionSetVersion ??
+      LEGACY_QUESTION_SET_VERSION;
+    const selectedQuestion = questionSetVersion === DATABASE_QUESTION_SET_VERSION
+      ? questionOverride ?? databaseQuestion("")
+      : questionAt(index, questionSetVersion);
+    const answerTimeSeconds = answerTimeSecondsOverride ??
+      (questionSetVersion === CURRENT_QUESTION_SET_VERSION
+        ? this.answerTimeSecondsAt(index)
+        : selectedQuestion.answerTimeSeconds);
+    if (!Number.isFinite(answerTimeSeconds) || answerTimeSeconds < 0) {
+      throw new ApiError(500, "QUIZ_CONFIG_MISMATCH", "Quiz answer time is invalid");
+    }
+    const answerRevealAt = revealAt ?? now + answerTimeSeconds * 1000;
     if (!Number.isFinite(answerRevealAt)) {
       throw new ApiError(400, "INVALID_REVEAL_TIME", "Quiz reveal time is invalid");
     }
     const questionVariantId = variantId ?? progress.attemptId;
-    const question = await this.#shuffledQuestion(index, questionVariantId);
+    const question = await this.#shuffledQuestion(
+      index,
+      questionVariantId,
+      questionSetVersion,
+      selectedQuestion.id,
+      questionOverride,
+    );
     return {
       question: publicQuestion(index, question),
       questionToken: await this.#sign({
@@ -267,8 +415,10 @@ export class QuizService {
         revealAt: answerRevealAt,
         expiresAt: progress.expiresAt,
         variantId: questionVariantId,
+        questionSetVersion,
+        questionId: question.id,
       }),
-      answerTimeSeconds: this.config.answerTimeSeconds,
+      answerTimeSeconds,
     };
   }
 
@@ -276,12 +426,20 @@ export class QuizService {
     index: number,
     questionToken: string,
     selectedOption: number | null,
+    trustedRevealAt?: number,
+    questionOverride?: Readonly<RawQuizQuestion>,
   ): Promise<QuizGradeResult> {
     const token = await this.#verify(questionToken, "question");
     if (token.questionIndex !== index) {
       throw new ApiError(409, "QUIZ_TOKEN_MISMATCH", "Quiz token does not match the question");
     }
-    if (token.revealAt === undefined || this.#now() < token.revealAt) {
+    if (questionOverride && token.questionId !== questionOverride.id) {
+      throw new ApiError(409, "QUIZ_TOKEN_MISMATCH", "Quiz token does not match the question");
+    }
+    const revealAt = trustedRevealAt === undefined
+      ? token.revealAt
+      : Math.min(token.revealAt ?? Number.POSITIVE_INFINITY, trustedRevealAt);
+    if (revealAt === undefined || this.#now() < revealAt) {
       throw new ApiError(
         409,
         "QUIZ_REVIEW_NOT_READY",
@@ -292,14 +450,22 @@ export class QuizService {
     const question = await this.#shuffledQuestion(
       index,
       token.variantId ?? LEGACY_CHOICE_ORDER_VARIANT,
+      token.questionSetVersion ?? LEGACY_QUESTION_SET_VERSION,
+      token.questionId,
+      questionOverride,
     );
+    const questionSetVersion = token.questionSetVersion ?? LEGACY_QUESTION_SET_VERSION;
     const nextIndex = index + 1;
-    const nextProgressToken = nextIndex < questions.length
+    const questionCount = questionSetVersion === DATABASE_QUESTION_SET_VERSION
+      ? this.config.questionCount
+      : questionsForVersion(questionSetVersion).length;
+    const nextProgressToken = nextIndex < questionCount
       ? await this.#sign({
         type: "progress",
         attemptId: token.attemptId,
         questionIndex: nextIndex,
         expiresAt: token.expiresAt,
+        questionSetVersion,
       })
       : null;
 
@@ -317,9 +483,16 @@ export class QuizService {
     questionCount: number,
     selectedOptions: readonly (number | null)[],
     variantId = "shared-default",
+    questionSetVersion = CURRENT_QUESTION_SET_VERSION,
+    questionOverrides?: readonly Readonly<RawQuizQuestion>[],
   ): Promise<QuizScore> {
+    const selectedQuestions = questionSetVersion === DATABASE_QUESTION_SET_VERSION
+      ? questionOverrides
+      : questionsForVersion(questionSetVersion);
     if (
-      !Number.isSafeInteger(questionCount) || questionCount < 1 || questionCount > questions.length
+      !selectedQuestions ||
+      !Number.isSafeInteger(questionCount) || questionCount < 1 ||
+      questionCount > selectedQuestions.length
     ) {
       throw new ApiError(500, "QUIZ_CONFIG_MISMATCH", "Session question count is invalid");
     }
@@ -331,7 +504,13 @@ export class QuizService {
     let totalWeight = 0;
 
     for (let index = 0; index < questionCount; index += 1) {
-      const question = await this.#shuffledQuestion(index, variantId);
+      const question = await this.#shuffledQuestion(
+        index,
+        variantId,
+        questionSetVersion,
+        questionOverrides?.[index]?.id,
+        questionOverrides?.[index],
+      );
       const selectedOption = Number.isInteger(selectedOptions[index])
         ? selectedOptions[index]
         : null;
@@ -363,12 +542,20 @@ export class QuizService {
     };
   }
 
-  async #shuffledQuestion(index: number, variantId: string): Promise<Readonly<RawQuizQuestion>> {
+  async #shuffledQuestion(
+    index: number,
+    variantId: string,
+    questionSetVersion = CURRENT_QUESTION_SET_VERSION,
+    questionId?: string,
+    questionOverride?: Readonly<RawQuizQuestion>,
+  ): Promise<Readonly<RawQuizQuestion>> {
     if (!variantId || variantId.length > 128) {
       throw new ApiError(400, "INVALID_QUIZ_VARIANT", "Quiz variant is invalid");
     }
 
-    const question = questionAt(index);
+    const question = questionSetVersion === DATABASE_QUESTION_SET_VERSION
+      ? questionOverride ?? databaseQuestion(questionId ?? "")
+      : questionAt(index, questionSetVersion);
     if (variantId === LEGACY_CHOICE_ORDER_VARIANT) {
       const shift = index % question.choices.length;
       return Object.freeze({
@@ -410,7 +597,17 @@ export class QuizService {
     return `${encodedPayload}.${encodeBase64Url(new Uint8Array(signature))}`;
   }
 
-  async #verify(token: string, expectedType: TokenPayload["type"]): Promise<TokenPayload> {
+  async #accessTokenHash(accessToken: string): Promise<string> {
+    const digest = await crypto.subtle.digest("SHA-256", encoder.encode(accessToken));
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(
+      "",
+    );
+  }
+
+  async #verify<Type extends TokenPayload["type"]>(
+    token: string,
+    expectedType: Type,
+  ): Promise<Extract<TokenPayload, { type: Type }>> {
     try {
       const [encodedPayload, encodedSignature, extra] = token.split(".");
       if (!encodedPayload || !encodedSignature || extra !== undefined) throw new Error("format");
@@ -427,7 +624,7 @@ export class QuizService {
       if (this.#now() > payload.expiresAt) {
         throw new ApiError(401, "QUIZ_TOKEN_EXPIRED", "Quiz token has expired");
       }
-      return payload;
+      return payload as Extract<TokenPayload, { type: Type }>;
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw new ApiError(401, "INVALID_QUIZ_TOKEN", "Quiz token is invalid");

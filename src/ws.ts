@@ -8,6 +8,7 @@ export type WsEvent =
     type: "player_joined";
     participantId: string;
     displayName: string;
+    crewColor: string;
     role: ParticipantSummary["role"];
   }
   | { type: "player_left"; participantId: string }
@@ -22,12 +23,29 @@ export type WsEvent =
   }
   | { type: "question_ended"; questionIndex: number; reviewEndsAt: number }
   | { type: "all_questions_done" }
+  | { type: "result_publication_changed"; published: boolean }
   | { type: "launch_ready"; categoryScores: Record<string, number> };
 
 // 接続はroomId(内部ID)で管理する。REST API側(app.ts)もGameSessionSummary.roomIdなどを
 // 使って同じ部屋を指すので、roomCode(見た目の部屋コード)ではなくroomIdで揃えている。
 const roomConnections = new Map<string, Set<WebSocket>>();
 const participantConnections = new Map<string, Set<WebSocket>>();
+const BROADCAST_CHANNEL_NAME = "engifar-events";
+const instanceId = crypto.randomUUID();
+
+interface BroadcastMessage {
+  sourceInstanceId: string;
+  roomId: string;
+  event: WsEvent;
+}
+
+interface ParticipantPresenceMessage {
+  sourceInstanceId: string;
+  type: "participant_connected" | "participant_connection_check";
+  participantId: string;
+}
+
+let eventChannel: BroadcastChannel | undefined;
 
 interface ConnectionInfo {
   roomId: string;
@@ -64,14 +82,108 @@ function participantSet(participantId: string): Set<WebSocket> {
   return set;
 }
 
-/** 指定した部屋(roomId)につながっている全員にイベントを配信する。REST側のアクションから呼び出される。 */
-export function broadcast(roomId: string, event: WsEvent): void {
+function isBroadcastMessage(value: unknown): value is BroadcastMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as Record<string, unknown>;
+  if (
+    typeof message.sourceInstanceId !== "string" || typeof message.roomId !== "string" ||
+    !message.event || typeof message.event !== "object"
+  ) return false;
+  const type = (message.event as Record<string, unknown>).type;
+  return typeof type === "string" && [
+    "player_joined",
+    "player_left",
+    "field_selected",
+    "host_started",
+    "question_started",
+    "question_ended",
+    "all_questions_done",
+    "result_publication_changed",
+    "launch_ready",
+  ].includes(type);
+}
+
+function isParticipantPresenceMessage(value: unknown): value is ParticipantPresenceMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as Record<string, unknown>;
+  return typeof message.sourceInstanceId === "string" &&
+    (message.type === "participant_connected" ||
+      message.type === "participant_connection_check") &&
+    typeof message.participantId === "string";
+}
+
+function postChannelMessage(message: BroadcastMessage | ParticipantPresenceMessage): void {
+  try {
+    eventChannel?.postMessage(message);
+  } catch (error) {
+    console.error("Failed to relay WebSocket event through BroadcastChannel", error);
+  }
+}
+
+function announceParticipantConnected(participantId: string): void {
+  postChannelMessage({
+    sourceInstanceId: instanceId,
+    type: "participant_connected",
+    participantId,
+  });
+}
+
+function requestParticipantConnectionCheck(participantId: string): void {
+  postChannelMessage({
+    sourceInstanceId: instanceId,
+    type: "participant_connection_check",
+    participantId,
+  });
+}
+
+/** このDenoインスタンス内の、指定した部屋につながっている全員へ配信する。 */
+function broadcastLocal(roomId: string, event: WsEvent): void {
   const payload = JSON.stringify(event);
-  for (const socket of roomSet(roomId)) {
+  for (const socket of roomConnections.get(roomId) ?? []) {
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(payload);
     }
   }
+}
+
+/**
+ * Deno DeployのBroadcastChannelを開始し、別インスタンスから届いたイベントを
+ * このインスタンス内のWebSocketへ中継する。サーバー起動時に1回呼ぶ。
+ */
+export function startBroadcastChannel(channelName: string = BROADCAST_CHANNEL_NAME): void {
+  stopBroadcastChannel();
+  eventChannel = new BroadcastChannel(channelName);
+  eventChannel.onmessage = (messageEvent) => {
+    const message = messageEvent.data;
+    if (isBroadcastMessage(message)) {
+      if (message.sourceInstanceId === instanceId) return;
+      // broadcast()を呼ぶと再投稿されるため、別インスタンスからの通知はローカル配信だけ行う。
+      broadcastLocal(message.roomId, message.event);
+      return;
+    }
+    if (!isParticipantPresenceMessage(message) || message.sourceInstanceId === instanceId) return;
+    if (message.type === "participant_connected") {
+      cancelPendingDisconnect(message.participantId);
+    } else if (participantConnections.get(message.participantId)?.size) {
+      announceParticipantConnected(message.participantId);
+    }
+  };
+  eventChannel.onmessageerror = (error) => {
+    console.warn("Ignored malformed BroadcastChannel event", error);
+  };
+}
+
+/** テストやサーバー終了処理からBroadcastChannelを閉じる。 */
+export function stopBroadcastChannel(): void {
+  eventChannel?.close();
+  eventChannel = undefined;
+}
+
+/** 指定した部屋へ、同一インスタンスと別Deno Deployインスタンスの両方で配信する。 */
+export function broadcast(roomId: string, event: WsEvent): void {
+  broadcastLocal(roomId, event);
+  // DB更新と同一インスタンスへの通知は完了済みなので、中継失敗はログだけに留める。
+  postChannelMessage({ sourceInstanceId: instanceId, roomId, event });
 }
 
 /**
@@ -115,6 +227,8 @@ function handleSocketClosed(
     disconnectGraceMs,
   );
   pendingDisconnects.set(info.participantId, { timeoutId, repository, info });
+  // 再接続先が別インスタンスでも退出扱いにしないよう、接続中のインスタンスへ応答を求める。
+  requestParticipantConnectionCheck(info.participantId);
 }
 
 /**
@@ -148,6 +262,7 @@ export async function handleWsUpgrade(
     connections.add(socket);
     participantSet(participant.id).add(socket);
     connectionInfo.set(socket, { roomId, participantId: participant.id, lastSeenAt: Date.now() });
+    announceParticipantConnected(participant.id);
   };
 
   // 何か受信すること自体を生存確認として扱う(専用のハートビートメッセージでなくてもよい)。

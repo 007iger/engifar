@@ -1,0 +1,326 @@
+[
+  {
+    "id": "api-patch",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 1,
+    "instruction": "ユーザー全体ではなくnameだけを部分更新します。適切なHTTPメソッドを選んでください。",
+    "question": "fetch('/api/users/3', {\n  method: '＿＿＿',\n  body: JSON.stringify({ name: 'Aoi' })\n});",
+    "choices": [
+      "GET",
+      "PATCH",
+      "TRACE",
+      "HEAD"
+    ],
+    "answer": 1,
+    "explanation": "PATCHはリソースの一部分を更新するときによく使われます。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-delete",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 1,
+    "instruction": "idが3のユーザーを削除するAPIを呼び出します。適切なHTTPメソッドを選んでください。",
+    "question": "fetch('/api/users/3', {\n  method: '＿＿＿'\n});",
+    "choices": [
+      "REMOVE",
+      "DELETE",
+      "CLEAR",
+      "DROP"
+    ],
+    "answer": 1,
+    "explanation": "DELETEはリソースを削除するときに使うHTTPメソッドです。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-status-201",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 1,
+    "instruction": "POSTで新しいリソースの作成に成功しました。適切なHTTPステータスコードを選んでください。",
+    "question": "HTTP/1.1 ＿＿＿ Created",
+    "choices": [
+      "200",
+      "201",
+      "204",
+      "304"
+    ],
+    "answer": 1,
+    "explanation": "201 Createdは新しいリソースが正常に作成されたことを表します。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-status-400",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 1,
+    "instruction": "必須のnameが送られておらず、リクエスト内容が不正です。返すステータスコードを選んでください。",
+    "question": "return new Response('name is required', { status: ＿＿＿ });",
+    "choices": [
+      "200",
+      "301",
+      "400",
+      "500"
+    ],
+    "answer": 2,
+    "explanation": "400 Bad Requestはクライアントから送られたリクエストが不正な場合に使います。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-status-404",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 1,
+    "answerTimeSeconds": 15,
+    "instruction": "指定されたIDのユーザーが存在しなかったときに返すHTTPステータスを選んでください。",
+    "question": "return new Response(\"not found\", { status: ＿＿＿ });",
+    "choices": [
+      "404",
+      "400",
+      "403",
+      "500"
+    ],
+    "answer": 0,
+    "explanation": "404 Not Foundは、指定された資源が見つからないことを表します。",
+    "difficulty": 1
+  },
+  {
+    "id": "api-content-type",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 1,
+    "answerTimeSeconds": 15,
+    "instruction": "JSONを送るPOSTリクエストに、本文の形式を伝えるヘッダーを付けます。空欄に入るヘッダー名を選んでください。",
+    "question": "fetch(\"/api/users\", {\n  method: \"POST\",\n  headers: { \"＿＿＿\": \"application/json\" },\n  body: JSON.stringify(user)\n});",
+    "choices": [
+      "Content-Type",
+      "Accept",
+      "Content-Length",
+      "Body-Type"
+    ],
+    "answer": 0,
+    "explanation": "Content-Typeは、送る本文の形式を相手に伝えるヘッダーです。",
+    "difficulty": 1
+  },
+  {
+    "id": "api-accept-json",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 1,
+    "instruction": "APIへJSON形式のレスポンスを希望することを伝えます。空欄に入るリクエストヘッダー名を選んでください。",
+    "question": "headers: {\n  '＿＿＿': 'application/json'\n}",
+    "choices": [
+      "Accept",
+      "Content-Type",
+      "Location",
+      "Host"
+    ],
+    "answer": 0,
+    "explanation": "Acceptヘッダーは、クライアントが受け取りたいレスポンスの形式をサーバーへ伝えます。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-query-parameter",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 1,
+    "instruction": "URLの?page=3からpageの値を取得します。空欄に入るプロパティを選んでください。",
+    "question": "const url = new URL(request.url);\nconst page = url.＿＿＿.get('page');",
+    "choices": [
+      "params",
+      "query",
+      "searchParams",
+      "values"
+    ],
+    "answer": 2,
+    "explanation": "URL.searchParamsを使うとクエリパラメータを取得できます。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-status-204",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 1,
+    "instruction": "削除処理は成功し、返す本文はありません。適切なステータスコードを選んでください。",
+    "question": "return new Response(null, { status: ＿＿＿ });",
+    "choices": [
+      "201",
+      "204",
+      "302",
+      "404"
+    ],
+    "answer": 1,
+    "explanation": "204 No Contentは処理は成功したがレスポンス本文がない場合に使います。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-bearer-header",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 1,
+    "instruction": "BearerトークンをAuthorizationヘッダーで送ります。空欄を選んでください。",
+    "question": "headers: {\n  Authorization: '＿＿＿ ' + token\n}",
+    "choices": [
+      "Basic",
+      "Token",
+      "Bearer",
+      "Auth"
+    ],
+    "answer": 2,
+    "explanation": "Bearer認証ではAuthorization: Bearer <token>の形式で送信します。",
+    "difficulty": 1,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-status-401",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 2,
+    "instruction": "ログイン情報がなく、認証が必要なAPIへアクセスされました。返すステータスコードを選んでください。",
+    "question": "return new Response('Unauthorized', { status: ＿＿＿ });",
+    "choices": [
+      "401",
+      "403",
+      "404",
+      "409"
+    ],
+    "answer": 0,
+    "explanation": "401 Unauthorizedは認証情報がない、または有効でない場合に使います。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-status-403",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 2,
+    "instruction": "ログイン済みですが、管理者限定APIを一般ユーザーが実行しようとしました。返すステータスコードを選んでください。",
+    "question": "return new Response('Forbidden', { status: ＿＿＿ });",
+    "choices": [
+      "401",
+      "403",
+      "404",
+      "500"
+    ],
+    "answer": 1,
+    "explanation": "403 Forbiddenは認証済みでも、その操作を行う権限がない場合に使います。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-path-parameter",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 2,
+    "instruction": "/api/users/42 の42をURLPatternから取得します。空欄を選んでください。",
+    "question": "const pattern = new URLPattern({ pathname: '/api/users/:id' });\nconst match = pattern.exec(request.url);\nconst id = match?.pathname.＿＿＿.id;",
+    "choices": [
+      "params",
+      "groups",
+      "values",
+      "query"
+    ],
+    "answer": 1,
+    "explanation": "URLPatternの名前付きパラメータはpathname.groupsから取得できます。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-pagination",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 2,
+    "instruction": "一覧APIで20件ずつ取得し、先頭40件を飛ばします。適切なURLを選んでください。",
+    "question": "fetch(＿＿＿);",
+    "choices": [
+      "'/api/users?limit=20&offset=40'",
+      "'/api/users/20/40'",
+      "'/api/users?start=20&end=40'",
+      "'/api/users#20,40'"
+    ],
+    "answer": 0,
+    "explanation": "limitとoffsetは一覧APIでよく使われるページネーション方法の1つです。",
+    "difficulty": 2,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-put",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 2,
+    "answerTimeSeconds": 15,
+    "instruction": "id=7のユーザー情報を丸ごと置き換えます。何度送っても同じ結果になるHTTPメソッドを選んでください。",
+    "question": "fetch(\"/api/users/7\", {\n  method: \"＿＿＿\",\n  body: JSON.stringify(user)\n});",
+    "choices": [
+      "PUT",
+      "POST",
+      "PATCH",
+      "HEAD"
+    ],
+    "answer": 0,
+    "explanation": "PUTは指定したURLの内容を丸ごと置き換えるので、同じ内容を何度送っても結果が同じです。",
+    "difficulty": 2
+  },
+  {
+    "id": "api-cors-origin",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 3,
+    "answerTimeSeconds": 15,
+    "instruction": "別オリジンのフロントからこのAPIを呼べるようにします。サーバーが返すヘッダー名を選んでください。",
+    "question": "return new Response(body, {\n  headers: { \"＿＿＿\": \"https://engifar.example\" }\n});",
+    "choices": [
+      "Access-Control-Allow-Origin",
+      "Cross-Origin-Allow",
+      "Allow-Origin-Policy",
+      "CORS-Origin"
+    ],
+    "answer": 0,
+    "explanation": "Access-Control-Allow-Originは、どのオリジンからの呼び出しを許すかを伝えます。",
+    "difficulty": 3
+  },
+  {
+    "id": "api-cors-methods-header",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 3,
+    "instruction": "CORSのプリフライトレスポンスでGETとPOSTを許可します。空欄に入るヘッダー名を選んでください。",
+    "question": "headers: {\n  '＿＿＿': 'GET, POST'\n}",
+    "choices": [
+      "Access-Control-Allow-Methods",
+      "Access-Control-Allow-Origin",
+      "Access-Control-Request-Method",
+      "Allow"
+    ],
+    "answer": 0,
+    "explanation": "Access-Control-Allow-Methodsは、クロスオリジンで許可するHTTPメソッドを示します。",
+    "difficulty": 3,
+    "answerTimeSeconds": 15
+  },
+  {
+    "id": "api-etag-304",
+    "category": "API",
+    "technology": "HTTP",
+    "weight": 3,
+    "instruction": "クライアントが持つETagと現在のETagが一致し、本文を再送する必要がありません。返すステータスコードを選んでください。",
+    "question": "if (request.headers.get('If-None-Match') === etag) {\n  return new Response(null, { status: ＿＿＿ });\n}",
+    "choices": [
+      "204",
+      "304",
+      "409",
+      "412"
+    ],
+    "answer": 1,
+    "explanation": "304 Not Modifiedはキャッシュ済みの内容が変更されていないことを示します。",
+    "difficulty": 3,
+    "answerTimeSeconds": 15
+  }
+]
