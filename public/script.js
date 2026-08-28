@@ -15,6 +15,7 @@ import {
   renderRoomAvatarField,
 } from "./crew-avatars.js";
 import { boardRocket } from "./rocket-boarding.js";
+import { createRocketSfx } from "./rocket-sfx.js";
 import { createQuizCrewReaction } from "./quiz-crew-reaction.js";
 import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
 
@@ -1713,6 +1714,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     const resultContent = globalThis.ROCKET_LAUNCH_RESULTS || {};
     const captions = { ground: "発射準備", sky: "上空へ", "atmosphere-edge": "大気圏付近", space: "宇宙空間", sea: "着水" };
     let running = false;
+    const rocketSfx = createRocketSfx();
 
     const wait = (milliseconds) => new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
     const showScreen = (target) => [elements.setup, elements.launch, elements.result].forEach((screen) => {
@@ -1749,19 +1751,23 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     async function bounceRocket() { elements.rocket.classList.add("is-bouncing"); await wait(700); elements.rocket.classList.remove("is-bouncing"); }
     async function igniteRocket() {
       elements.rocket.classList.add("is-igniting");
-      for (const number of ["3", "2", "1"]) { elements.countdown.textContent = number; elements.countdown.classList.remove("is-visible"); void elements.countdown.offsetWidth; elements.countdown.classList.add("is-visible"); await wait(650); }
+      for (const number of ["5", "4", "3", "2", "1"]) {
+        if (number === "5") rocketSfx.startMotor();
+        elements.countdown.textContent = number; elements.countdown.classList.remove("is-visible"); void elements.countdown.offsetWidth; elements.countdown.classList.add("is-visible"); await wait(1000);
+      }
       elements.countdown.classList.remove("is-visible");
     }
-    async function liftoffRocket() { setSkyLeg("sky"); elements.ground.classList.add("is-hidden"); elements.rocket.classList.remove("is-igniting"); elements.rocket.classList.add("is-flying"); setCaption("発射!"); await wait(1000); elements.rocket.classList.remove("is-flying"); elements.rocket.classList.add("is-cruising"); }
+    async function liftoffRocket() { rocketSfx.switchToLaunch(); setSkyLeg("sky"); elements.ground.classList.add("is-hidden"); elements.rocket.classList.remove("is-igniting"); elements.rocket.classList.add("is-flying"); setCaption("発射!"); await wait(1000); elements.rocket.classList.remove("is-flying"); elements.rocket.classList.add("is-cruising"); }
     async function flyThrough() {
       for (let index = 0; index < rank.legs.length; index += 1) {
         const leg = rank.legs[index]; const last = index === rank.legs.length - 1; setSkyLeg(leg); setCaption(captions[leg] || "");
         if (leg === "space" && rank.approachColor && last) { elements.approach.style.setProperty("--approach-color", rank.approachColor); elements.approach.classList.add("is-visible"); setCaption(`${rank.destination}へ接近`); }
         await wait(last ? 900 : 650);
       }
-      if (rank.crashLanding) { setCaption("エンジン停止..."); elements.rocket.classList.remove("is-cruising"); await wait(500); elements.rocket.classList.add("is-tumbling"); setCaption("落下中!"); await wait(700); setSkyLeg("sea"); await wait(700); setCaption("着水..."); await wait(500); elements.rocket.classList.remove("is-tumbling"); }
+      if (rank.crashLanding) { rocketSfx.stopLaunch(); setCaption("エンジン停止..."); elements.rocket.classList.remove("is-cruising"); await wait(500); elements.rocket.classList.add("is-tumbling"); setCaption("落下中!"); await wait(700); setSkyLeg("sea"); await wait(700); setCaption("着水..."); await wait(500); elements.rocket.classList.remove("is-tumbling"); }
     }
     function showResult() {
+      rocketSfx.stopLaunch();
       const content = resultContent[rank.key] || {};
       elements.resultTitle.textContent = rank.name;
       elements.resultTitle.className = `rl-result-title rl-title-${rank.key}`;
