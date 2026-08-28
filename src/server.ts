@@ -24,9 +24,14 @@ export async function startServer(): Promise<Deno.HttpServer> {
     }
     // デモ発表などで問題数を短縮したい場合、QUIZ_QUESTION_COUNTを設定する(未設定なら通常の24問)。
     const rawQuestionCount = Deno.env.get("QUIZ_QUESTION_COUNT");
+    // 同様に、答え合わせの表示時間を短くしたい場合はQUIZ_REVIEW_TIME_SECONDSを設定する(未設定なら5秒)。
+    const rawReviewTimeSeconds = Deno.env.get("QUIZ_REVIEW_TIME_SECONDS");
     const quizService = createQuizService({
       secret: quizTokenSecret,
       questionCount: rawQuestionCount === undefined ? undefined : Number(rawQuestionCount),
+      reviewTimeSeconds: rawReviewTimeSeconds === undefined
+        ? undefined
+        : Number(rawReviewTimeSeconds),
     });
     startBroadcastChannel();
     startHeartbeatMonitor(repository);

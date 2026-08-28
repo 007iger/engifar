@@ -1,34 +1,15 @@
 import { decorateCrewAvatar } from "./crew-avatars.js";
 
-const SVG_NS = "http://www.w3.org/2000/svg";
 const STAIRS_MAX_CREW = 4;
 const STEP_COUNT = 6;
 const STRIDE_MS = 460;
-
-function svgEl(name, attributes = {}) {
-  const element = document.createElementNS(SVG_NS, name);
-  Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value)));
-  return element;
-}
+const HOVER_LIFT = 16;
 
 function wait(ms) {
   return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }
 
-function buildWalkerSvg(color) {
-  const svg = svgEl("svg", { class: "rl-walker-svg", viewBox: "0 0 100 130", "aria-hidden": "true", focusable: "false" });
-  svg.append(
-    svgEl("ellipse", { cx: 50, cy: 124, rx: 22, ry: 5, fill: color, opacity: 0.3 }),
-    svgEl("rect", { class: "rl-walker-leg rl-walker-leg--left", x: 33, y: 84, width: 13, height: 42, rx: 6.5, fill: color }),
-    svgEl("rect", { class: "rl-walker-leg rl-walker-leg--right", x: 54, y: 84, width: 13, height: 42, rx: 6.5, fill: color }),
-    svgEl("line", { x1: 50, y1: 6, x2: 50, y2: 20, stroke: color, "stroke-width": 4, "stroke-linecap": "round" }),
-    svgEl("circle", { cx: 50, cy: 5, r: 5.5, fill: "#62e4ec" }),
-    svgEl("rect", { x: 20, y: 18, width: 60, height: 74, rx: 29, fill: color, stroke: "rgba(255,255,255,.18)", "stroke-width": 2 }),
-  );
-  return svg;
-}
-
-function makeBoardingAvatar(participant, { walking }) {
+function makeBoardingAvatar(participant) {
   const wrap = document.createElement("div");
   wrap.className = "rl-boarding-avatar";
   wrap.style.setProperty("--crew-color", participant.color);
@@ -37,8 +18,7 @@ function makeBoardingAvatar(participant, { walking }) {
 
   const motion = document.createElement("div");
   motion.className = "rl-boarding-avatar-motion";
-  if (walking) motion.append(buildWalkerSvg(participant.color));
-  else decorateCrewAvatar(motion);
+  decorateCrewAvatar(motion);
   wrap.append(motion);
   return wrap;
 }
@@ -79,20 +59,26 @@ async function boardViaStairs({ container, doorEl, groundEl, participants }) {
   doorEl.classList.add("is-open");
   await wait(280);
 
+  // Avatars hover slightly above the physical stairs (drawn on the unlifted
+  // base→door line) and settle back to the door's natural height on arrival.
+  const flightBase = { x: basePoint.x, y: basePoint.y - HOVER_LIFT };
+  const flightDoor = { x: doorPoint.x, y: doorPoint.y - HOVER_LIFT * 0.25 };
+  const fdx = flightDoor.x - flightBase.x;
+  const fdy = flightDoor.y - flightBase.y;
   const stepPoints = Array.from({ length: STEP_COUNT + 1 }, (_, index) => ({
-    x: basePoint.x + dx * (index / STEP_COUNT),
-    y: basePoint.y + dy * (index / STEP_COUNT),
+    x: flightBase.x + fdx * (index / STEP_COUNT),
+    y: flightBase.y + fdy * (index / STEP_COUNT),
   })).slice(1);
 
   async function boardOne(participant, index) {
-    const avatar = makeBoardingAvatar(participant, { walking: true });
-    avatar.style.left = `${basePoint.x - 110 - index * 26}px`;
-    avatar.style.top = `${groundY}px`;
+    const avatar = makeBoardingAvatar(participant);
+    avatar.style.left = `${flightBase.x - 110 - index * 26}px`;
+    avatar.style.top = `${flightBase.y}px`;
     container.append(avatar);
-    avatar.classList.add("is-walking");
+    avatar.classList.add("is-floating");
     await wait(40);
 
-    moveTo(avatar, basePoint);
+    moveTo(avatar, flightBase);
     await wait(STRIDE_MS + 40);
 
     for (const point of stepPoints) {
@@ -100,7 +86,7 @@ async function boardViaStairs({ container, doorEl, groundEl, participants }) {
       await wait(STRIDE_MS);
     }
 
-    avatar.classList.remove("is-walking");
+    avatar.classList.remove("is-floating");
     avatar.classList.add("is-entering");
     await wait(300);
     avatar.remove();
@@ -137,7 +123,7 @@ async function boardViaHatch({ container, rocketSvg, topHatchLid, groundEl, part
   });
 
   const avatars = participants.map((participant, index) => {
-    const avatar = makeBoardingAvatar(participant, { walking: false });
+    const avatar = makeBoardingAvatar(participant);
     const spawn = gatherPoints[index];
     avatar.style.left = `${spawn.x + (index % 2 === 0 ? -1 : 1) * 46}px`;
     avatar.style.top = `${spawn.y - 26}px`;

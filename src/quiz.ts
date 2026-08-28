@@ -308,11 +308,16 @@ export class QuizService {
       { length: questionCount },
       () => options.answerTimeSeconds ?? DEFAULT_ANSWER_TIME_SECONDS,
     ));
+    const reviewTimeSeconds = options.reviewTimeSeconds ?? DEFAULT_REVIEW_TIME_SECONDS;
+    // 0は「答え合わせを待たず即座に次へ進む」という意味で使われるため許可する。
+    if (!Number.isInteger(reviewTimeSeconds) || reviewTimeSeconds < 0 || reviewTimeSeconds > 60) {
+      throw new Error("reviewTimeSeconds must be an integer between 0 and 60");
+    }
     this.config = Object.freeze({
       questionCount,
       answerTimeSeconds: answerTimeSecondsByQuestion[0] ?? DEFAULT_ANSWER_TIME_SECONDS,
       answerTimeSecondsByQuestion,
-      reviewTimeSeconds: options.reviewTimeSeconds ?? DEFAULT_REVIEW_TIME_SECONDS,
+      reviewTimeSeconds,
     });
   }
 

@@ -232,6 +232,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       status: "setup",
       playerConfigured: false,
       cardOpened: false,
+      cardSaved: false,
       player: { name: "CREW MEMBER", color: "#54d37c" },
       room: { mode: "create", name: "ロケット部", code: "------", sessionId: null },
       quiz: {
@@ -299,6 +300,7 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
       status: String(source.status || (outcome ? "result" : metrics ? "rocket" : "setup")),
       playerConfigured: Boolean(source.playerConfigured || playerSource.name || metrics),
       cardOpened: Boolean(source.cardOpened),
+      cardSaved: Boolean(source.cardSaved),
       player: { name, color: normalizeColor(playerSource.color) },
       room: {
         mode: roomSource.mode === "join" ? "join" : "create",
@@ -2118,12 +2120,73 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
     retryButton.disabled = !state.cardOpened;
     retryButton.setAttribute("aria-disabled", String(!state.cardOpened));
     retryButton.title = state.cardOpened ? "もう一度チャレンジ" : "自己紹介カードを開くと次のチャレンジへ進めます";
-    retryButton.addEventListener("click", () => {
-      if (!state.cardOpened) return;
+
+    function proceedToRetry() {
       const fresh = createDefaultState();
       fresh.player = { ...state.player };
       fresh.playerConfigured = true;
       goTo("./index.html", fresh);
+    }
+
+    function createRetryWarning() {
+      const wrapper = document.createElement("div");
+      wrapper.className = "retry-warning-layer";
+      wrapper.innerHTML = `
+        <div class="retry-warning-overlay" data-retry-warning-close></div>
+        <section class="retry-warning-modal" role="dialog" aria-modal="true" aria-labelledby="retry-warning-title" tabindex="-1">
+          <div class="retry-warning-avatar" id="retry-warning-avatar" aria-hidden="true"></div>
+          <p class="retry-warning-eyebrow">SAVE CHECK</p>
+          <h2 id="retry-warning-title">写真を保存していません</h2>
+          <p class="retry-warning-message">今回の記録は写真として保存しないと消えてしまいます。保存せずに次のチャレンジへ進んでも大丈夫ですか？</p>
+          <div class="retry-warning-actions">
+            <button class="secondary-button" type="button" data-retry-warning-close>戻る</button>
+            <button class="primary-button" type="button" id="retry-warning-confirm">はい</button>
+          </div>
+        </section>`;
+      document.body.append(wrapper);
+
+      const modal = wrapper.querySelector(".retry-warning-modal");
+      const avatarReaction = createQuizCrewReaction(wrapper.querySelector("#retry-warning-avatar"), {
+        color: state.player.color,
+        name: state.player.name,
+      });
+      let returnFocus = null;
+
+      function close() {
+        document.body.classList.remove("retry-warning-open");
+        if (returnFocus && typeof returnFocus.focus === "function") returnFocus.focus();
+      }
+
+      function open(trigger) {
+        returnFocus = trigger || document.activeElement;
+        avatarReaction.setState("incorrect");
+        document.body.classList.add("retry-warning-open");
+        globalThis.requestAnimationFrame(() => modal.focus());
+      }
+
+      wrapper.querySelectorAll("[data-retry-warning-close]").forEach((button) => {
+        button.addEventListener("click", close);
+      });
+      wrapper.querySelector("#retry-warning-confirm").addEventListener("click", () => {
+        close();
+        proceedToRetry();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && document.body.classList.contains("retry-warning-open")) close();
+      });
+
+      return { open };
+    }
+
+    let retryWarning = null;
+    retryButton.addEventListener("click", () => {
+      if (!state.cardOpened) return;
+      if (state.cardSaved) {
+        proceedToRetry();
+        return;
+      }
+      if (!retryWarning) retryWarning = createRetryWarning();
+      retryWarning.open(retryButton);
     });
   }
 
@@ -2445,6 +2508,8 @@ import { renderHighlightedQuizCode } from "./quiz-syntax-highlight.js";
         link.click();
         link.remove();
         saveLabel.textContent = "保存しました！";
+        state.cardSaved = true;
+        persist(state);
         globalThis.setTimeout(() => {
           saveButton.disabled = false;
           saveLabel.textContent = "PNGで保存";
