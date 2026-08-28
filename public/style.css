@@ -470,6 +470,7 @@ a {
 
 @media (prefers-reduced-motion: reduce) {
   .crew-avatar,
+  .retry-warning-avatar,
   .room-field-avatar.is-reacting-shy,
   .room-field-avatar.is-reacting-spin,
   .room-field-avatar.is-bounce,
@@ -3528,4 +3529,156 @@ body.guide-open .guide-modal {
 @media (prefers-reduced-motion:reduce) {
   body.guide-open .guide-overlay,
   body.guide-open .guide-modal { animation:none; }
+}
+
+/* Result screen: let content flow to its natural height and scroll instead of being squeezed to fit the viewport */
+.result-layout {
+  align-items: start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding-block: clamp(18px, 3vh, 32px) clamp(32px, 8vh, 64px);
+  scrollbar-color: var(--cyan-deep) rgba(4, 13, 25, .5);
+}
+
+.result-actions {
+  margin-top: clamp(14px, 2.5vh, 22px);
+}
+
+@media (max-width: 760px) {
+  .result-layout {
+    grid-template-rows: auto auto;
+    align-content: start;
+    padding-block: 10px clamp(32px, 10vh, 64px);
+  }
+
+  .result-visual {
+    height: min(44vh, 340px);
+    min-height: 240px;
+  }
+}
+
+@media (max-height: 590px) and (max-width: 760px),
+       (max-height: 520px) and (min-width: 600px) {
+  .result-message,
+  .threshold-note {
+    display: block;
+  }
+
+  .result-panel {
+    padding: clamp(14px, 3vh, 20px);
+  }
+
+  .result-metrics {
+    margin: clamp(10px, 2vh, 16px) 0;
+  }
+}
+
+/* The two-column landscape variants (short + wide viewports) size .result-panel
+   via the grid track, not the viewport — undo the portrait-mode width/height
+   overrides above so the panel fills its column instead of forcing full-viewport
+   width and clipping against .result-layout's scroll clip. */
+@media (max-height: 520px) and (min-width: 600px),
+       (max-height: 620px) and (min-width: 700px) {
+  .result-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .result-visual {
+    height: 100%;
+    min-height: 0;
+  }
+}
+
+/* Retry-warning modal: same open/close convention as .guide-overlay/.guide-modal
+   (body.<x>-open toggle, shared enter animations, data-<x>-close dismiss targets). */
+.retry-warning-layer {
+  position: relative;
+  z-index: 210;
+}
+
+.retry-warning-overlay,
+.retry-warning-modal {
+  display: none;
+}
+
+body.retry-warning-open .retry-warning-overlay {
+  position: fixed;
+  z-index: 210;
+  inset: 0;
+  display: block;
+  background: rgba(2, 7, 17, .84);
+  backdrop-filter: blur(5px);
+  animation: guide-overlay-in .25s ease both;
+}
+
+body.retry-warning-open .retry-warning-modal {
+  position: fixed;
+  z-index: 211;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(380px, calc(100% - 32px));
+  padding: clamp(22px, 5vw, 32px) clamp(20px, 4vw, 28px) 26px;
+  border: 1px solid var(--line-strong);
+  border-radius: 24px;
+  outline: 0;
+  text-align: center;
+  color: var(--text);
+  background: linear-gradient(145deg, rgba(17, 36, 57, .98), rgba(7, 17, 31, .99));
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .65);
+  transform: translate(-50%, -50%);
+  animation: guide-modal-in .32s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.retry-warning-avatar {
+  width: 104px;
+  margin-bottom: 2px;
+  filter: drop-shadow(0 12px 16px rgba(0, 0, 0, .32));
+  animation: crew-bob 3.4s ease-in-out infinite;
+}
+
+.retry-warning-avatar .quiz-crew-reaction__label {
+  display: none;
+}
+
+.retry-warning-eyebrow {
+  margin: 0;
+  color: var(--orange-bright);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .22em;
+}
+
+.retry-warning-modal h2 {
+  margin: 2px 0 0;
+  font-size: clamp(19px, 4vw, 23px);
+  line-height: 1.25;
+}
+
+.retry-warning-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.retry-warning-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.retry-warning-open .retry-warning-overlay,
+  body.retry-warning-open .retry-warning-modal {
+    animation: none;
+  }
 }

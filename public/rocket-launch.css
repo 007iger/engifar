@@ -259,17 +259,14 @@ body {
   transition: left 0.46s cubic-bezier(0.4, 0, 0.2, 1), top 0.46s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .rl-boarding-avatar-motion { display: block; }
-.rl-boarding-avatar .crew-avatar-svg,
-.rl-walker-svg { display: block; width: 100%; height: auto; }
+.rl-boarding-avatar .crew-avatar-svg { display: block; width: 100%; height: auto; }
 
-/* --- 4人以下: 階段方式 --- */
-.rl-walker-leg { transform-box: fill-box; transform-origin: 50% 0%; }
-.rl-boarding-avatar.is-walking .rl-walker-leg--left { animation: rlWalkLeg 0.5s ease-in-out infinite; }
-.rl-boarding-avatar.is-walking .rl-walker-leg--right { animation: rlWalkLeg 0.5s ease-in-out infinite reverse; }
-@keyframes rlWalkLeg { 0%, 100% { rotate: 24deg; } 50% { rotate: -24deg; } }
-
-.rl-boarding-avatar.is-walking .rl-boarding-avatar-motion { animation: rlWalkBob 0.5s ease-in-out infinite; }
-@keyframes rlWalkBob { 0%, 100% { translate: 0 0; rotate: -3deg; } 50% { translate: 0 -3px; rotate: 3deg; } }
+/* --- 4人以下: 階段方式(手足は付けず、少し浮いたまま横に揺れて上る) --- */
+.rl-boarding-avatar.is-floating .rl-boarding-avatar-motion { animation: rlHoverSway 1.05s ease-in-out infinite; }
+@keyframes rlHoverSway {
+  0%, 100% { translate: -5px -1px; rotate: -4deg; }
+  50% { translate: 5px 3px; rotate: 4deg; }
+}
 
 .rl-boarding-avatar.is-entering { transition: left 0.46s cubic-bezier(0.4, 0, 0.2, 1), top 0.46s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease; }
 .rl-boarding-avatar.is-entering .rl-boarding-avatar-motion { animation: rlEnterShrink 0.3s ease forwards; }
@@ -618,9 +615,7 @@ body {
   .rl-countdown.is-visible {
     animation: none !important;
   }
-  .rl-boarding-avatar.is-walking .rl-walker-leg--left,
-  .rl-boarding-avatar.is-walking .rl-walker-leg--right,
-  .rl-boarding-avatar.is-walking .rl-boarding-avatar-motion,
+  .rl-boarding-avatar.is-floating .rl-boarding-avatar-motion,
   .rl-boarding-avatar.is-jumping .rl-boarding-avatar-motion {
     animation: none !important;
   }
